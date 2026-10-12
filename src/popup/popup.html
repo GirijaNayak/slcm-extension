@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>MUJ SLCM Enhanced</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <p class="kicker"><span class="kicker-dot"></span> MUJ SLCM Enhanced</p>
+      <h1>In-Place Intelligence</h1>
+      <div id="status" class="status-card">Checking local cache status…</div>
+
+      <div class="section-label">Active Enhancements</div>
+      <div class="toggle-group">
+        <label class="toggle">
+          <span>Attendance Intel</span>
+          <input type="checkbox" data-feature="attendance">
+        </label>
+        <label class="toggle">
+          <span>Marks & SGPA Predictor</span>
+          <input type="checkbox" data-feature="marks">
+        </label>
+        <label class="toggle">
+          <span>CGPA Predictor</span>
+          <input type="checkbox" data-feature="cgpaPredictor">
+        </label>
+        <label class="toggle">
+          <span>Target CGPA Planner</span>
+          <input type="checkbox" data-feature="targetCgpa">
+        </label>
+        <label class="toggle">
+          <span>Timetable Extras</span>
+          <input type="checkbox" data-feature="timetable">
+        </label>
+        <label class="toggle">
+          <span>Academic Alerts</span>
+          <input type="checkbox" data-feature="notifications">
+        </label>
+        <label class="toggle">
+          <span>Home Glance Card</span>
+          <input type="checkbox" data-feature="homePanel">
+        </label>
+      </div>
+
+      <div class="section-label">Settings & Controls</div>
+      <div class="field">
+        <span>Target Attendance</span>
+        <input id="threshold" type="number" min="1" max="100" step="1">
+      </div>
+      <div class="field">
+        <span>Theme</span>
+        <select id="theme">
+          <option value="auto">System / Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+      <div class="field">
+        <span>Auto-Refresh (min)</span>
+        <input id="refresh" type="number" min="0" max="120" placeholder="0 = off">
+      </div>
+
+      <div class="actions">
+        <button id="cache" class="btn-secondary" type="button">Reset Cache</button>
+        <button id="options" class="btn-primary" type="button">All Settings</button>
+      </div>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>MUJ SLCM Enhanced — Preferences & Options</title>
+    <link rel="stylesheet" href="../popup/popup.css">
+    <style>
+      body {
+        width: 100%;
+        max-width: 680px;
+        margin: 30px auto;
+        padding: 0 20px;
+        background: var(--bg);
+      }
+      .settings-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-bottom: 20px;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin: 16px 0;
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .form-field label {
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--ink);
+      }
+      .form-field .help {
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .form-field input, .form-field select {
+        width: 100%;
+        text-align: left;
+        padding: 8px 10px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 100px;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 12px;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--ink);
+        box-sizing: border-box;
+      }
+      .weights-row {
+        display: flex;
+        gap: 12px;
+      }
+      .weights-row input {
+        width: 80px;
+      }
+    </style>
+  </head>
+  <body>
+    <main style="padding:0;">
+      <p class="kicker"><span class="kicker-dot"></span> Extension Settings</p>
+      <h1 style="font-size:22px; margin-bottom: 6px;">MUJ SLCM Enhanced Options</h1>
+      <p style="color:var(--muted); font-size:13px; margin-bottom: 20px;">
+        All preferences are persisted locally in <code>chrome.storage.local</code>. No academic data, cookies, or credentials are ever sent to an external server.
+      </p>
+
+      <div class="settings-card">
+        <h2 style="font-size:15px; margin:0 0 12px; color:var(--ink);">Attendance Intelligence Rules</h2>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="threshold">Target Threshold (%)</label>
+            <input id="threshold" type="number" min="1" max="100" step="1">
+            <span class="help">Default is 75%. Safe skips and classes needed are calculated against this target.</span>
+          </div>
+          <div class="form-field">
+            <label for="band">Borderline Band (± percentage points)</label>
+            <input id="band" type="number" min="0" max="25" step="1">
+            <span class="help">Default 5%. Subjects within target ± band are marked Borderline/At Risk.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h2 style="font-size:15px; margin:0 0 12px; color:var(--ink);">Academic Grading & Evaluation Parameters</h2>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="cap">Institution Grade Point Cap</label>
+            <input id="cap" type="number" min="1" max="10" step="0.5">
+            <span class="help">Standard MUJ grade cap is 10.0 (Grade A+).</span>
+          </div>
+          <div class="form-field">
+            <label>Assumed Internal Weights (MTE / CWS / ETE)</label>
+            <div class="weights-row">
+              <input id="w-mte" type="number" min="0" max="100" placeholder="MTE">
+              <input id="w-cws" type="number" min="0" max="100" placeholder="CWS">
+              <input id="w-ete" type="number" min="0" max="100" placeholder="ETE">
+            </div>
+            <span class="help">MUJ standard: MTE 30% / CWS 30% / ETE 40%. Used when weightage is not listed on page.</span>
+          </div>
+        </div>
+
+        <div class="form-field" style="margin-top:14px;">
+          <label for="bounds">Optional Absolute Grade Boundaries JSON (Exploratory)</label>
+          <textarea id="bounds" placeholder='[{"letter":"A+","minPercent":90},{"letter":"A","minPercent":80}]'></textarea>
+          <span class="help">Official MUJ grading is relative for cohorts &gt; 25 students. These boundaries are user-configured exploratory values.</span>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:20px;">
+        <button id="save" class="btn-primary" type="button" style="padding:10px 20px; font-size:13px;">Save Preferences</button>
+        <button id="reset" class="btn-secondary" type="button" style="padding:10px 20px; font-size:13px;">Reset to Defaults</button>
+      </div>
+      <p id="msg" style="margin-top:12px; font-weight:600; color:var(--accent);"></p>
+    </main>
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>
