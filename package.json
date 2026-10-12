@@ -1,0 +1,19 @@
+{
+  "name": "muj-sclm-enhanced",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Premium, non-destructive Chrome extension that enhances the MUJ SLCM portal in place.",
+  "scripts": {
+    "build": "esbuild src/content/bootstrap.js --bundle --outfile=dist/content.bundle.js --format=iife",
+    "build:watch": "esbuild src/content/bootstrap.js --bundle --outfile=dist/content.bundle.js --format=iife --watch",
+    "test": "node --test tests/*.test.js",
+    "test:watch": "node --test --watch tests/*.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

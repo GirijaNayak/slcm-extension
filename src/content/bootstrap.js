@@ -1,4 +1,4 @@
-import { BOOT_FLAG, PAGE_KINDS, STORAGE_KEYS } from "../shared/constants.js";
+import { BOOT_FLAG, INJECT_ATTR, PAGE_KINDS, STORAGE_KEYS } from "../shared/constants.js";
 import { detectPage } from "./page-detector.js";
 import { applyTheme, createOverlay, injectColumn, teardownAll } from "./overlay-manager.js";
 import { observePath, observeTable } from "./observers.js";
@@ -17,7 +17,8 @@ import { extractAttendanceFromDocument } from "../data/attendance-adapter.js";
 import { extractMarksFromDocument } from "../data/marks-adapter.js";
 import { extractSemesterContext } from "../data/semester-adapter.js";
 import { extractTimetableFromDocument } from "../data/timetable-adapter.js";
-import { parseCgpaSummaryTable } from "../data/grades-adapter.js";
+import { parseCgpaSummaryTable, parseGradesTable } from "../data/grades-adapter.js";
+import { enhanceGradeSheet } from "../ui/components/grades/grade-sheet.js";
 import { analyzeSchedule } from "../data/timetable-adapter.js";
 import { planTargetCgpa } from "../calculations/target-cgpa.js";
 import { fingerprint } from "../data/normalizers.js";
@@ -109,9 +110,38 @@ async function mount() {
       await saveCache({ timetable: { count: timetable.events.length, fingerprint: timetable.fingerprint } });
     }
 
+    const hasGradeTableInDOM = () => {
+      const tables = document.querySelectorAll("table");
+      for (const t of tables) {
+        const text = (t.textContent || "").toLowerCase();
+        if (text.includes("grade") && (text.includes("course") || text.includes("credit") || text.includes("session"))) {
+          return true;
+        }
+        if (text.includes("cgpa") && (text.includes("student") || text.includes("registration"))) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const isGradesPage =
+      page.kind === PAGE_KINDS.grades ||
+      location.pathname.toLowerCase().includes("grade") ||
+      location.pathname.toLowerCase().includes("cgpaga") ||
+      location.pathname.toLowerCase().includes("examination") ||
+      hasGradeTableInDOM();
+    const isMarksPage = page.kind === PAGE_KINDS.marks;
+
     // 1. INLINE ENHANCEMENT: Attendance Tables (both Attendance page AND Dashboard)
     // Directly injects the "MUJX Intel" column into the website's table. Zero overlays.
-    if (prefs.features.attendance && attendance.available && attendance.table) {
+    // Strictly guard so attendance is NEVER injected on grades or marks pages.
+    if (
+      prefs.features.attendance &&
+      !isGradesPage &&
+      !isMarksPage &&
+      attendance.available &&
+      attendance.table
+    ) {
       const cleanup = injectColumn(attendance.table, {
         key: "attendance-intel",
         title: "MUJX Intel",
@@ -140,14 +170,43 @@ async function mount() {
       await recordAlertsIfAny(enhanced, snapshotChanged, marksChanged);
     }
 
-    // 2. INLINE ENHANCEMENT: CGPA / Grades Table (e.g. CGPAGPAForStudent)
-    // Directly injects target SGPA requirement into the student's row. Zero overlays.
-    if (page.kind === PAGE_KINDS.grades || location.pathname.toLowerCase().includes("cgpaga") || location.pathname.toLowerCase().includes("grade")) {
-      enhanceCgpaTableInline(prefs);
+    // 2. INLINE ENHANCEMENT: CGPA & Grade Sheet Tables (/Student/Academic/GradesForStudent & CGPAGPAForStudent)
+    if (isGradesPage) {
+      enhanceGradesInline(prefs);
+
+      // Continuous DOM observation for dynamic AJAX / postback tables (e.g. clicking 'Find' for a semester)
+      const dynamicObserver = new MutationObserver((mutations) => {
+        const hasExternalChanges = mutations.some((m) => {
+          const target = m.target;
+          return !(target?.hasAttribute?.(INJECT_ATTR) || target?.closest?.(`[${INJECT_ATTR}]`));
+        });
+        if (hasExternalChanges) {
+          enhanceGradesInline(prefs);
+        }
+      });
+      dynamicObserver.observe(document.body, { childList: true, subtree: true });
+      cleanups.push(() => dynamicObserver.disconnect());
+
+      // Listen to user interactions with buttons and dropdowns (e.g. Find button, semester select)
+      const onUserInteraction = (e) => {
+        const isInteractive = e.target.closest("button, input[type=submit], input[type=button], select, a, input");
+        if (isInteractive) {
+          setTimeout(() => enhanceGradesInline(prefs), 100);
+          setTimeout(() => enhanceGradesInline(prefs), 350);
+          setTimeout(() => enhanceGradesInline(prefs), 800);
+          setTimeout(() => enhanceGradesInline(prefs), 1600);
+        }
+      };
+      document.addEventListener("click", onUserInteraction, true);
+      document.addEventListener("change", onUserInteraction, true);
+      cleanups.push(() => {
+        document.removeEventListener("click", onUserInteraction, true);
+        document.removeEventListener("change", onUserInteraction, true);
+      });
     }
 
     // 3. INLINE ENHANCEMENT: Internal Marks Table
-    if (prefs.features.marks && page.kind === PAGE_KINDS.marks) {
+    if (prefs.features.marks && isMarksPage) {
       enhanceMarksTableInline(marks, prefs);
     }
 
@@ -170,16 +229,57 @@ async function mount() {
 }
 
 /**
- * Enhances the CGPA table directly on the website without any overlay.
+ * Enhances Grade Sheet and CGPA tables directly on the website without any overlay.
  */
-function enhanceCgpaTableInline(prefs) {
-  const tables = document.querySelectorAll("table");
-  for (const table of tables) {
+function enhanceGradesInline(prefs) {
+  const allTables = [
+    ...document.querySelectorAll("table"),
+    ...[...document.querySelectorAll("iframe")].flatMap((f) => {
+      try {
+        return [...(f.contentDocument?.querySelectorAll("table") || [])];
+      } catch {
+        return [];
+      }
+    }),
+  ];
+
+  for (const table of allTables) {
     const text = (table.textContent || "").toLowerCase();
+
+    // Case A: Grade Sheet (/Student/Academic/GradesForStudent)
+    // Computes official credit-weighted SGPA and provides interactive predictor
+    if (text.includes("grade") && (text.includes("course") || text.includes("credit") || text.includes("session"))) {
+      const gradeSheetData = parseGradesTable(table);
+      if (gradeSheetData.available && gradeSheetData.records.length) {
+        const dataSig = `${gradeSheetData.session || ""}:${gradeSheetData.records.map((r) => `${r.courseCode}-${r.letter}-${r.credits}`).join(";")}`;
+        if (table.getAttribute("data-mujx-sig") === dataSig && table.querySelector(`[${INJECT_ATTR}="grade-points"]`)) {
+          continue;
+        }
+
+        // Clean previous injections if dataset changed
+        table.querySelectorAll(`[${INJECT_ATTR}]`).forEach((el) => el.remove());
+        table.setAttribute("data-mujx-sig", dataSig);
+
+        const cleanup = enhanceGradeSheet({
+          table,
+          records: gradeSheetData.records,
+          totalCreditsFromFooter: gradeSheetData.totalCreditsFromFooter,
+          headerRow: gradeSheetData.headerRow,
+          allRows: gradeSheetData.allRows,
+          headerRowIndex: gradeSheetData.headerRowIndex,
+          session: gradeSheetData.session,
+        });
+        cleanups.push(cleanup);
+        continue;
+      }
+    }
+
+    // Case B: Multi-semester CGPA table (/Student/Academic/CGPAGPAForStudent)
     if (text.includes("cgpa") && (text.includes("student") || text.includes("registration"))) {
+      if (table.querySelector(`[${INJECT_ATTR}="cgpa-target-intel"]`)) continue;
       const cgpaData = parseCgpaSummaryTable(table);
       if (cgpaData && cgpaData.cgpa !== null) {
-        const completedCr = cgpaData.completedCredits || 80;
+        const completedCr = cgpaData.completedCredits || 89;
         const targetGoal = cgpaData.cgpa < 8.0 ? 8.0 : cgpaData.cgpa < 8.5 ? 8.5 : 9.0;
         const plan = planTargetCgpa({
           currentCgpa: cgpaData.cgpa,
@@ -193,14 +293,15 @@ function enhanceCgpaTableInline(prefs) {
           key: "cgpa-target-intel",
           title: "MUJX Target Plan",
           render: (td) => {
-            const reqText = plan.requiredAverageSgpa !== null
-              ? `Next Sem: ${plan.requiredAverageSgpa.toFixed(2)} SGPA for ${targetGoal.toFixed(1)} CGPA`
-              : `Target ${targetGoal.toFixed(1)} Met`;
+            const reqText =
+              plan.requiredAverageSgpa !== null
+                ? `Next Sem: ${plan.requiredAverageSgpa.toFixed(2)} SGPA for ${targetGoal.toFixed(1)} CGPA`
+                : `Target ${targetGoal.toFixed(1)} Met`;
             td.innerHTML = `
-              <div style="font-size:12px; font-weight:700; color:#0d9488; white-space:nowrap;">
+              <div style="font-size:12px; font-weight:700; color:var(--mujx-accent, #2dd4bf); white-space:nowrap;">
                 ${reqText}
               </div>
-              <div style="font-size:11px; color:#64748b;">
+              <div style="font-size:11px; opacity:0.75;">
                 Current: <strong>${cgpaData.cgpa}</strong> (${completedCr} cr)
               </div>
             `;
@@ -292,21 +393,26 @@ async function mountFloatingHub(prefs, seed, snapshotChanged, attendance, marksC
   const notifsData = await loadNotifications();
   const alertCount = notifsData.items.length;
 
+  let isHidden = false;
   try {
     const hubStored = await chrome.storage.local.get(STORAGE_KEYS.hubState);
     if (hubStored[STORAGE_KEYS.hubState]?.lastTab) {
       activeFloatingTab = hubStored[STORAGE_KEYS.hubState].lastTab;
     }
+    isHidden = Boolean(hubStored[STORAGE_KEYS.hubState]?.hidden);
   } catch {
     // default tab remains alerts
   }
 
   overlay.wrap.innerHTML = `
-    <button class="mujx-fab-pill" type="button" data-role="fab-toggle" tabindex="0" role="button" aria-haspopup="dialog" aria-expanded="false" title="MUJX Academic Tools (Click to open sidebar drawer)">
-      <span style="font-size:14px">✨</span>
-      <span>MUJX</span>
-      <span class="mujx-fab-badge" data-role="fab-badge" ${alertCount === 0 ? "hidden" : ""}>${alertCount}</span>
-    </button>
+    <div class="mujx-fab-container" style="display:${isHidden ? "none" : "inline-flex"}; align-items:center; gap:4px; pointer-events:auto;">
+      <button class="mujx-fab-pill" type="button" data-role="fab-toggle" tabindex="0" role="button" aria-haspopup="dialog" aria-expanded="false" title="MUJX Academic Tools (Click to open sidebar drawer)">
+        <span style="font-size:13px">✨</span>
+        <span data-role="fab-label">MUJX</span>
+        <span class="mujx-fab-badge" data-role="fab-badge" ${alertCount === 0 ? "hidden" : ""}>${alertCount}</span>
+      </button>
+      <button class="mujx-fab-min-btn" type="button" data-role="fab-min" title="Hide floating MUJX widget" style="background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.25); border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; font-size:10px; padding:0;">✕</button>
+    </div>
 
     <div class="mujx-drawer" data-role="drawer" role="dialog" aria-label="MUJX Intelligence Hub" hidden>
       <div class="mujx-drawer-head">
@@ -345,9 +451,19 @@ async function mountFloatingHub(prefs, seed, snapshotChanged, attendance, marksC
     </div>
   `;
 
+  const fabContainer = overlay.wrap.querySelector(".mujx-fab-container");
   const toggleBtn = overlay.wrap.querySelector("[data-role=fab-toggle]");
+  const minBtn = overlay.wrap.querySelector("[data-role=fab-min]");
   const drawer = overlay.wrap.querySelector("[data-role=drawer]");
   const closeBtn = overlay.wrap.querySelector("[data-role=drawer-close]");
+
+  minBtn?.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    fabContainer.style.display = "none";
+    try {
+      await chrome.storage.local.set({ [STORAGE_KEYS.hubState]: { hidden: true } });
+    } catch {}
+  });
   const body = overlay.wrap.querySelector("[data-role=drawer-body]");
   const tabBtns = overlay.wrap.querySelectorAll("[data-tab]");
 

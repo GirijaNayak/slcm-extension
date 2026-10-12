@@ -47,14 +47,58 @@ export function pickIndex(map, aliases) {
 }
 
 export function tableToMatrix(table) {
-  if (!table) return { headers: [], rows: [] };
-  const headerCells = table.querySelectorAll("thead th, tr:first-child th");
-  const headers = [...headerCells].map((cell) => textOf(cell));
-  const bodyRows = table.tBodies.length
-    ? [...table.tBodies].flatMap((body) => [...body.rows])
-    : [...table.rows].slice(headers.length ? 1 : 0);
-  const rows = bodyRows
-    .map((row) => [...row.cells].map((cell) => textOf(cell)))
+  if (!table) return { headers: [], rows: [], table, headerRow: null, headerRowIndex: -1, allRows: [] };
+
+  const allRows = [...table.querySelectorAll("tr")];
+  if (!allRows.length) return { headers: [], rows: [], table, headerRow: null, headerRowIndex: -1, allRows: [] };
+
+  // Search through the first few rows to locate the real column header row
+  let headerRowIndex = -1;
+  for (let i = 0; i < Math.min(allRows.length, 5); i++) {
+    const cells = [...allRows[i].children];
+    const texts = cells.map(textOf).map((t) => t.toLowerCase());
+    const matchCount = texts.filter((t) =>
+      t.includes("course") ||
+      t.includes("grade") ||
+      t.includes("credit") ||
+      t.includes("subject") ||
+      t.includes("present") ||
+      t.includes("total") ||
+      t.includes("session") ||
+      t.includes("s. no") ||
+      t === "s.no." ||
+      t === "s.no" ||
+      t === "s. no."
+    ).length;
+
+    // If at least 2 header keywords match, this is definitely the header row
+    if (matchCount >= 2) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+
+  // Fallback: look for <thead> row or row containing <th> tags
+  if (headerRowIndex === -1) {
+    const theadTr = table.querySelector("thead tr");
+    if (theadTr) {
+      headerRowIndex = allRows.indexOf(theadTr);
+    } else {
+      const thRow = allRows.find((r) => r.querySelector("th"));
+      if (thRow) {
+        headerRowIndex = allRows.indexOf(thRow);
+      }
+    }
+  }
+
+  if (headerRowIndex === -1) headerRowIndex = 0;
+
+  const headerRow = allRows[headerRowIndex];
+  const headers = [...headerRow.children].map(textOf);
+  const rows = allRows
+    .slice(headerRowIndex + 1)
+    .map((row) => [...row.children].map(textOf))
     .filter((cells) => cells.some(Boolean));
-  return { headers, rows, table };
+
+  return { headers, rows, table, headerRow, headerRowIndex, allRows };
 }

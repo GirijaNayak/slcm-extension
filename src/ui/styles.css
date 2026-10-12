@@ -354,21 +354,30 @@
   background: var(--mujx-bg);
 }
 
-/* Injected Table Column in Portal DOM */
-th[data-mujx="attendance-intel"] {
-  background: #f0fdfa !important;
-  color: #0f766e !important;
+/* Injected Table Column in Portal DOM - Theme Adaptive */
+th[data-mujx] {
+  background: inherit !important;
+  color: inherit !important;
+  border-color: rgba(125, 125, 125, 0.25) !important;
+  font-size: 12px !important;
   font-weight: 700 !important;
-  border-left: 2px solid #0d9488 !important;
   text-align: center !important;
+  vertical-align: middle !important;
+  box-sizing: border-box !important;
 }
 
-td[data-mujx="attendance-intel"] {
-  background: #f8fafc !important;
-  border-left: 2px solid #0d9488 !important;
+td[data-mujx] {
+  background: inherit !important;
+  color: inherit !important;
+  border-color: rgba(125, 125, 125, 0.2) !important;
   font-size: 12px !important;
-  white-space: nowrap !important;
+  vertical-align: middle !important;
   padding: 6px 10px !important;
+  box-sizing: border-box !important;
+}
+
+th[data-mujx="attendance-intel"], td[data-mujx="attendance-intel"] {
+  border-left: 2px solid #0d9488 !important;
 }
 
 .mujx-intel-cell {
@@ -385,25 +394,198 @@ td[data-mujx="attendance-intel"] {
 
 .mujx-intel-sub {
   font-size: 11px;
-  color: var(--mujx-muted);
+  opacity: 0.75;
 }
 
 .mujx-skips-badge {
   font-weight: 600;
   font-size: 11px;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
-  background: #ecfdf5;
-  color: #059669;
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .mujx-needed-badge {
   font-weight: 600;
   font-size: 11px;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
-  background: #fff1f2;
-  color: #e11d48;
+  background: rgba(244, 63, 94, 0.16);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+/* Grade Sheet Enhancer & Predictor Styles */
+.mujx-grade-banner {
+  background: rgba(13, 148, 136, 0.08);
+  border: 1px solid rgba(13, 148, 136, 0.3);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.mujx-grade-banner-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.mujx-grade-sgpa-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: rgba(13, 148, 136, 0.18);
+  border: 1px solid rgba(13, 148, 136, 0.4);
+  border-radius: 8px;
+  padding: 6px 16px;
+}
+
+.mujx-grade-sgpa-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0d9488;
+}
+
+.mujx-grade-sgpa-value {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #0d9488;
+}
+
+.mujx-grade-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.mujx-grade-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.mujx-stat-num {
+  font-size: 17px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.mujx-stat-lbl {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.mujx-grade-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mujx-pred-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 15px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #0d9488;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.mujx-pred-btn:hover {
+  background: #0f766e;
+}
+
+.mujx-pred-btn.active {
+  background: #f59e0b;
+  color: #111827;
+}
+
+.mujx-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  border: 1px solid rgba(125, 125, 125, 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mujx-calc-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.mujx-calc-toggle-btn:hover {
+  background: rgba(13, 148, 136, 0.28) !important;
+}
+
+.mujx-grade-breakdown {
+  animation: mujxFadeIn 0.2s ease-out;
+}
+
+.mujx-breakdown-table th {
+  color: var(--mujx-muted, #94a3b8);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.mujx-breakdown-table tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.mujx-grade-banner-footer {
+  font-size: 11.5px;
+  opacity: 0.8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px dashed rgba(125, 125, 125, 0.25);
+  padding-top: 8px;
+}
+
+.mujx-grade-select {
+  background: rgba(0, 0, 0, 0.4);
+  color: inherit;
+  border: 1px solid #0d9488;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mujx-sgpa-table-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  background: #0d9488;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 12px;
+  border-radius: 4px;
 }
 
 /* Notes, Empty, and Error messages */
@@ -507,8 +689,14 @@ td[data-mujx="attendance-intel"] {
 .mujx-host--float {
   position: fixed !important;
   right: 20px !important;
-  bottom: 20px !important;
+  bottom: 76px !important;
   z-index: 2147483640 !important;
+  pointer-events: none !important;
+}
+
+.mujx-fab-pill,
+.mujx-drawer {
+  pointer-events: auto !important;
 }
 
 .mujx-fab-pill {

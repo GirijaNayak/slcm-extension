@@ -50,6 +50,8 @@ export const MUJ_GRADE_POINTS = Object.freeze({
   U: 0,
 });
 
+export const MUJ_NON_EVALUATIVE_GRADES = Object.freeze(["S", "U", "AP"]);
+
 export const CANDIDATE_ENDPOINTS = Object.freeze({
   attendanceSummary: "/Student/Academic/GetAttendanceSummaryList",
   gradesForFaculty: "/Student/Academic/GetGradesForFaculty",

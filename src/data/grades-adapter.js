@@ -77,22 +77,67 @@ export function parseCgpaSummaryTable(table) {
 }
 
 export function parseGradesTable(table) {
-  const { headers, rows } = tableToMatrix(table);
+  const matrix = tableToMatrix(table);
+  const { headers, rows, headerRow, allRows, headerRowIndex } = matrix;
   const map = headerIndexMap(headers);
   const letterIdx = pickIndex(map, ["grade", "letter", "lg"]);
   const creditIdx = pickIndex(map, ["credit", "credits", "cr"]);
-  if (letterIdx < 0 && creditIdx < 0) return { records: [], table, available: false };
-  const records = rows.map((cells) =>
-    normalizeGradeRow({
-      subject: cells[pickIndex(map, ["course", "subject", "paper"])] || cells[1] || cells[0],
-      courseCode: cells[pickIndex(map, ["code", "course code"])] || "",
-      credits: parseNumber(cells[creditIdx]),
-      letter: cells[letterIdx] || null,
-      gradePoints: parseNumber(cells[pickIndex(map, ["grade point", "gp", "points"])]),
-      source: "dom",
-    }),
-  );
-  return { records, table, source: "dom", available: records.length > 0, summary: null };
+  const subjectIdx = pickIndex(map, ["course name", "course", "subject", "paper name", "paper"]);
+  const codeIdx = pickIndex(map, ["course code", "code", "subject code"]);
+  const sessionIdx = pickIndex(map, ["academic session", "session"]);
+
+  if (letterIdx < 0 || creditIdx < 0) return { records: [], table, available: false };
+
+  const records = [];
+  let totalCreditsFromFooter = null;
+
+  for (const cells of rows) {
+    if (!cells || !cells.length) continue;
+    // Skip the "Total" summary footer row
+    const firstNonEmpty = cells.find((c) => c && c.trim().length > 0) || "";
+    if (firstNonEmpty.toLowerCase().includes("total") || cells.some((c) => c.toLowerCase() === "total")) {
+      const nums = cells.map(parseNumber).filter((n) => n !== null);
+      if (nums.length) totalCreditsFromFooter = nums[nums.length - 1];
+      continue;
+    }
+
+    const cr = parseNumber(cells[creditIdx]);
+    const rawLetter = cells[letterIdx] ? cells[letterIdx].trim().toUpperCase() : null;
+    const subject = (subjectIdx >= 0 ? cells[subjectIdx] : "") || cells[2] || cells[1] || "";
+    const courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || cells[1] || "";
+    const session = sessionIdx >= 0 ? cells[sessionIdx] : "";
+
+    // Ignore empty/malformed rows
+    if (cr === null && !rawLetter) continue;
+
+    records.push(
+      normalizeGradeRow({
+        subject,
+        courseCode,
+        credits: cr,
+        letter: rawLetter,
+        session,
+        source: "dom",
+      })
+    );
+  }
+
+  const detectedSession =
+    records.find((r) => r.session)?.session ||
+    records.find((r) => r.semester)?.semester ||
+    null;
+
+  return {
+    records,
+    table,
+    source: "dom",
+    available: records.length > 0,
+    totalCreditsFromFooter,
+    headerRow,
+    allRows,
+    headerRowIndex,
+    session: detectedSession,
+  };
 }
 
 export function extractCgpaSummary(doc = document) {

@@ -27,12 +27,32 @@ export function extractAttendanceFromDocument(doc = document) {
 }
 
 export function parseAttendanceTable(table) {
+  if (!table) return { records: [], table: null, available: false };
+
+  const tableText = (table.textContent || "").toLowerCase();
+  // Strictly prevent matching CGPA, GPA, Grade Sheet, Marks, or Fee tables
+  if (
+    tableText.includes("cgpa") ||
+    tableText.includes("sgpa") ||
+    tableText.includes("grade sheet") ||
+    tableText.includes("academic session") ||
+    tableText.includes("internal marks") ||
+    tableText.includes("fee receipt") ||
+    tableText.includes("exam schedule")
+  ) {
+    if (!tableText.includes("attendance") && !tableText.includes("conducted") && !tableText.includes("present")) {
+      return { records: [], table, source: "dom", available: false };
+    }
+  }
+
   const { headers, rows } = tableToMatrix(table);
   const map = headerIndexMap(headers);
   const presentIdx = pickIndex(map, HEADER_ALIASES.present);
   const totalIdx = pickIndex(map, HEADER_ALIASES.total);
   const percentIdx = pickIndex(map, HEADER_ALIASES.percent);
-  if (presentIdx < 0 && totalIdx < 0 && percentIdx < 0) {
+
+  // A genuine attendance table MUST have a present/attended column AND a total or percent column
+  if (presentIdx < 0 || (totalIdx < 0 && percentIdx < 0)) {
     return { records: [], table, source: "dom", available: false };
   }
   const records = rows.map((cells) =>

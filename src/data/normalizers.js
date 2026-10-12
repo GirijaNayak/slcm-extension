@@ -41,6 +41,7 @@ export function normalizeMarkRow(raw) {
 }
 
 export function normalizeGradeRow(raw) {
+  const sessionVal = raw.session ?? raw.AcademicSession ?? raw.academicSession ?? raw.semester ?? raw.Semester ?? raw.SemesterName ?? null;
   return {
     id: String(raw.id ?? raw.CourseCode ?? cryptoRandom()),
     courseCode: raw.courseCode ?? raw.CourseCode ?? "",
@@ -48,7 +49,8 @@ export function normalizeGradeRow(raw) {
     credits: firstNumber(raw, ["credits", "Credits", "Credit"]),
     letter: raw.letter ?? raw.Grade ?? raw.GradeLetter ?? null,
     gradePoints: firstNumber(raw, ["gradePoints", "GradePoint", "GP"]),
-    semester: raw.semester ?? raw.Semester ?? raw.SemesterName ?? null,
+    semester: sessionVal,
+    session: sessionVal,
     excludeFromGpa: Boolean(raw.excludeFromGpa),
     source: raw.source || "unknown",
   };

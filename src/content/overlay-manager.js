@@ -90,9 +90,10 @@ function place(host, placement) {
   if (placement === "float") {
     Object.assign(host.style, {
       position: "fixed",
-      right: "16px",
-      bottom: "16px",
+      right: "20px",
+      bottom: "76px",
       zIndex: "2147483000",
+      pointerEvents: "none",
     });
     document.documentElement.append(host);
   }

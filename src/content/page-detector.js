@@ -16,7 +16,7 @@ export function detectPage(doc = document, href = location.href) {
   if (matches(body, ["internal mark", "internal marks", "sessional", "continuous assessment"])) {
     return { kind: PAGE_KINDS.marks, reason: "path-or-heading" };
   }
-  if (matches(body, ["grade card", "grades", "grade sheet", "sgpa", "cgpa"]) || /grade/.test(path)) {
+  if (matches(body, ["grade card", "grades", "grade sheet", "gradesheet", "sgpa", "cgpa", "examination"]) || /grade|cgpaga|examination/.test(path)) {
     return { kind: PAGE_KINDS.grades, reason: "path-or-heading" };
   }
   if (matches(body, ["time table", "timetable", "calendar", "schedule"]) || /calendar|timetable|time-table/.test(path)) {
