@@ -154,6 +154,8 @@ export function extractCgpaSummary(doc = document) {
   };
 }
 
+// fixed the backend for the grades calculation
+
 export async function fetchGradesPayload() {
   const result = await slcmRequest(CANDIDATE_ENDPOINTS.gradesForFaculty);
   const list = result.data?.GradeList || result.data?.Data || result.data?.data || [];

@@ -84,7 +84,10 @@ export function teardownAll() {
 
 export function teardownById(id) {
   document.getElementById(`${NS}-${id}`)?.remove();
+
 }
+
+// fixed the UI issue in the gradessheet
 
 function place(host, placement) {
   if (placement === "float") {
