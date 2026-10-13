@@ -135,3 +135,20 @@ test("Relative grading disclaimer is included in all calculation results", () =>
   assert.ok(res.disclaimer.includes("SGPA and Grade Prediction Is Only an Estimate"));
   assert.equal(res.disclaimer, RELATIVE_GRADING_DISCLAIMER);
 });
+
+// 9. Technical Writing Clinic and MATLAB with theory components are classified as theory
+test("Technical Writing Clinic and MATLAB with theory marks are classified as theory, not lab", () => {
+  assert.equal(
+    classifyCourseType({ courseCode: "LLC1010", courseName: "TECHNICAL WRITING CLINIC 1", mte1: 23, cws: 22 }),
+    "theory"
+  );
+  assert.equal(
+    classifyCourseType({ courseCode: "MEE1006", courseName: "MATLAB FOR ENGINEERS", mte1: 11, cws: 29.25 }),
+    "theory"
+  );
+  assert.equal(
+    classifyCourseType({ courseName: "PROBLEM SOLVING USING COMPUTERS LAB", prs: 53 }),
+    "lab"
+  );
+});
+

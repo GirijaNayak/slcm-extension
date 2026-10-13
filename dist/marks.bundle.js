@@ -123,8 +123,13 @@
     if (name.includes("PBL") || name.includes("PROJECT BASED LEARNING") || code.includes("PBL") || name.includes("PROJECT-BASED")) {
       return "pbl";
     }
-    if (name.includes("LAB") || name.includes("PRACTICAL") || name.includes("WORKSHOP") || name.includes("CLINIC") || code.endsWith("L") || code.endsWith("P") || /(?:103\d|213\d|313\d|323\d)/.test(code) || // MUJ lab course code convention (e.g. CSE1031, CSE2131)
-    course.prs !== void 0 && course.prs !== null && !course.mte && !course.mte1) {
+    const hasTheoryComponents = course.mte !== null && course.mte !== void 0 || course.mte1 !== null && course.mte1 !== void 0 || course.cws !== null && course.cws !== void 0;
+    const hasPrs = course.prs !== null && course.prs !== void 0;
+    if (hasTheoryComponents && !hasPrs) {
+      return "theory";
+    }
+    if (/\b(LAB|LABORATORY|PRACTICAL|WORKSHOP)\b/i.test(name) || code.endsWith("L") || code.endsWith("P") || /(?:103\d|213\d|313\d|323\d)/.test(code) || // MUJ lab course code convention (e.g. CSE1031, CSE2131)
+    hasPrs && !hasTheoryComponents) {
       return "lab";
     }
     return "theory";
@@ -355,22 +360,13 @@
   }
 
   // src/data/credit-resolver.js
-  function inferCourseCredits(courseName = "", courseCode = "", courseType = "theory") {
-    const name = courseName.toLowerCase();
-    const code = courseCode.toUpperCase();
-    if (name.includes("project-based learning 2") || name.includes("pbl 2") || code === "CSE2270") {
-      return 2;
-    }
-    if (name.includes("project-based learning 1") || name.includes("pbl 1") || code === "CSE1270") {
+  function inferCourseCredits(courseName = "", courseCode = "", courseType = "theory", isSatisfactory = false) {
+    const name = String(courseName || "").toLowerCase();
+    const code = String(courseCode || "").toUpperCase();
+    if (courseType === "lab" || courseType === "pbl" || isSatisfactory || code === "MEE1007" || name.includes("creativity & innovation") || name.includes("creativity and innovation") || name.includes("pbl") || name.includes("project-based") || name.includes("project based") || code.includes("PBL") || code === "CSE1270" || code === "CSE2170" || code === "CSE2270" || code === "CSE3170" || /\b(lab|laboratory|practical|workshop)\b/i.test(name) || code.endsWith("L") || code.endsWith("P") || /(?:103\d|213\d|313\d|323\d)/.test(code) || /(?:30|31|32|33|34|35|36|37|38|39)$/.test(code)) {
       return 1;
-    }
-    if (name.includes("creativity & innovation") || name.includes("creativity and innovation") || code === "MEE1007") {
-      return 2;
     }
     if (name.includes("technical writing") || code.startsWith("LLC")) {
-      return 1;
-    }
-    if (courseType === "lab" || name.includes("lab") || name.includes("practical") || /(?:30|31|32|33|34|35|36|37|38|39)$/.test(code)) {
       return 1;
     }
     if (code === "CSE2201" || // Design and Analysis of Algorithm
@@ -386,12 +382,23 @@
   }
   async function resolveAllCredits(sem = "") {
     const merged = {};
+    const userCustom = {};
+    const satisfactory = {
+      MEE1007: true
+    };
     try {
       if (typeof chrome !== "undefined" && chrome.storage?.local) {
         const stored = await new Promise(
-          (res) => chrome.storage.local.get("courseCredits", (d) => res(d?.courseCredits || {}))
+          (res) => chrome.storage.local.get(["userCustomCredits", "courseCredits", "satisfactoryCourses", "subjectGrades"], (d) => res(d || {}))
         );
-        Object.assign(merged, stored);
+        if (stored?.courseCredits) Object.assign(merged, stored.courseCredits);
+        if (stored?.userCustomCredits) Object.assign(userCustom, stored.userCustomCredits);
+        if (stored?.satisfactoryCourses) Object.assign(satisfactory, stored.satisfactoryCourses);
+        if (stored?.subjectGrades) {
+          Object.entries(stored.subjectGrades).forEach(([k, g]) => {
+            if (g === "S" || g === "U" || g === "AP") satisfactory[k] = true;
+          });
+        }
       }
     } catch (_) {
     }
@@ -405,6 +412,9 @@
           const data = parseGradesTable(table);
           data.records.forEach((r) => {
             if (r.courseCode && r.credits) merged[r.courseCode] = r.credits;
+            if (r.courseCode && (r.letter === "S" || r.letter === "U" || r.letter === "AP")) {
+              satisfactory[r.courseCode] = true;
+            }
           });
         }
       }
@@ -449,15 +459,26 @@
       }
     } catch (_) {
     }
+    Object.assign(merged, userCustom);
     try {
-      if (typeof chrome !== "undefined" && chrome.storage?.local && Object.keys(merged).length > 0) {
-        chrome.storage.local.get("courseCredits", (res) => {
-          const prev = res?.courseCredits || {};
-          chrome.storage.local.set({ courseCredits: { ...prev, ...merged } });
-        });
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        if (Object.keys(merged).length > 0) {
+          chrome.storage.local.get("courseCredits", (res) => {
+            const prev = res?.courseCredits || {};
+            chrome.storage.local.set({ courseCredits: { ...prev, ...merged } });
+          });
+        }
+        if (Object.keys(satisfactory).length > 0) {
+          chrome.storage.local.get("satisfactoryCourses", (res) => {
+            const prev = res?.satisfactoryCourses || {};
+            chrome.storage.local.set({ satisfactoryCourses: { ...prev, ...satisfactory } });
+          });
+        }
       }
     } catch (_) {
     }
+    merged.__satisfactory = satisfactory;
+    merged.__userCustom = userCustom;
     return merged;
   }
 
@@ -536,14 +557,22 @@
           mte = reSession !== null ? Math.max(mte2, reSession) : mte2;
         }
       }
-      const courseType = classifyCourseType({ courseName, courseCode, prs, mte });
+      const courseType = classifyCourseType({ courseName, courseCode, prs, mte, mte1, cws });
       let internalSubtotal = 0;
       if (courseType === "lab" || courseType === "pbl") {
-        internalSubtotal = prs !== null ? prs : declaredTotal !== null ? declaredTotal : 0;
+        if (prs !== null) {
+          internalSubtotal = prs;
+        } else if (mte !== null || cws !== null) {
+          internalSubtotal = (mte !== null ? mte : 0) + (cws !== null ? cws : 0);
+        } else if (declaredTotal !== null) {
+          internalSubtotal = declaredTotal;
+        }
       } else {
         internalSubtotal = (mte !== null ? mte : 0) + (cws !== null ? cws : 0);
         if (internalSubtotal === 0 && declaredTotal !== null) {
           internalSubtotal = declaredTotal;
+        } else if (internalSubtotal === 0 && prs !== null) {
+          internalSubtotal = prs;
         }
       }
       courses.push({
@@ -605,6 +634,22 @@
   function isNonEvaluativeGrade(grade) {
     const key = normalizeGrade(grade);
     return NON_EVALUATIVE_GRADES.includes(key);
+  }
+  function isSatisfactorySubject(course = {}, satisfactoryMap = {}) {
+    const code = String(course.courseCode || course.code || course.id || "").trim().toUpperCase();
+    const name = String(course.courseName || course.name || course.subject || "").trim().toUpperCase();
+    const officialGrade = String(course.officialGrade || course.grade || course.letter || "").trim().toUpperCase();
+    if (officialGrade === "S" || officialGrade === "U" || officialGrade === "AP") {
+      return true;
+    }
+    if (satisfactoryMap) {
+      if (code && satisfactoryMap[code]) return true;
+      if (name && satisfactoryMap[name]) return true;
+    }
+    if (code === "MEE1007" || name.includes("CREATIVITY & INNOVATION") || name.includes("CREATIVITY AND INNOVATION")) {
+      return true;
+    }
+    return false;
   }
 
   // src/calculations/sgpa.js
@@ -1103,7 +1148,7 @@
   }
 
   // src/ui/components/marks/prediction-panel.js
-  function enhanceInternalMarksPage({ table, courses, headerRow, allRows, headerRowIndex }) {
+  function enhanceInternalMarksPage({ table, courses, headerRow, allRows, headerRowIndex, satisfactoryMap = {} }) {
     if (!table || !courses || !courses.length) return () => {
     };
     const courseEteEstimates = {};
@@ -1182,11 +1227,29 @@
     });
     function render() {
       const predictedCourseList = courses.map((course) => {
+        const isSatisfactory = isSatisfactorySubject(course, satisfactoryMap);
+        if (isSatisfactory) {
+          const totalMarks = course.internalSubtotal !== null && course.internalSubtotal !== void 0 ? course.internalSubtotal : course.declaredTotal ?? course.prs ?? 0;
+          const isPass = totalMarks >= 35;
+          const provGrade = isPass ? "S" : "U";
+          return {
+            ...course,
+            isSatisfactory: true,
+            estimatedEte: 0,
+            projectedTotal: totalMarks,
+            provisionalGrade: provGrade,
+            provisionalStatus: isPass ? "pass" : "fail",
+            grade: provGrade,
+            letter: provGrade,
+            excludeFromGpa: true
+          };
+        }
         const estimatedEte = courseEteEstimates[course.id] ?? (course.courseType === "theory" ? 28 : 25);
         const projectedTotal = course.internalSubtotal + estimatedEte;
         const provisional = classifyProvisionalGrade(projectedTotal, course.courseType);
         return {
           ...course,
+          isSatisfactory: false,
           estimatedEte,
           projectedTotal,
           provisionalGrade: provisional.grade,
@@ -1259,14 +1322,16 @@
         const provGrade = predCourse?.provisionalGrade || "\u2014";
         const totalScore = predCourse?.projectedTotal;
         if (tdCredit) {
-          const crVal = course.credits ?? 3;
+          const isSat = Boolean(predCourse?.isSatisfactory);
+          const defaultCr = course.courseType === "lab" || course.courseType === "pbl" || isSat ? 1 : 3;
+          const crVal = course.credits ?? defaultCr;
           tdCredit.innerHTML = `
           <select class="mujx-credit-dropdown" style="padding:2px 5px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.4); color:inherit; font-weight:700; cursor:pointer;" title="Adjust course credits">
-            <option value="1" ${crVal === 1 ? "selected" : ""}>1 cr</option>
-            <option value="2" ${crVal === 2 ? "selected" : ""}>2 cr</option>
-            <option value="3" ${crVal === 3 ? "selected" : ""}>3 cr</option>
-            <option value="4" ${crVal === 4 ? "selected" : ""}>4 cr</option>
-            <option value="0" ${crVal === 0 ? "selected" : ""}>0 cr</option>
+            <option value="1" ${crVal === 1 ? "selected" : ""}>1</option>
+            <option value="2" ${crVal === 2 ? "selected" : ""}>2</option>
+            <option value="3" ${crVal === 3 ? "selected" : ""}>3</option>
+            <option value="4" ${crVal === 4 ? "selected" : ""}>4</option>
+            <option value="0" ${crVal === 0 ? "selected" : ""}>0</option>
           </select>
         `;
           tdCredit.querySelector("select")?.addEventListener("change", (e) => {
@@ -1274,10 +1339,28 @@
             course.credits = newCr;
             try {
               if (typeof chrome !== "undefined" && chrome.storage?.local) {
-                const key = course.courseCode || course.id;
-                chrome.storage.local.get("courseCredits", (res) => {
-                  const prev = res?.courseCredits || {};
-                  chrome.storage.local.set({ courseCredits: { ...prev, [key]: newCr } });
+                const codeKey = (course.courseCode || "").toUpperCase();
+                const idKey = (course.id || "").toUpperCase();
+                const nameKey = (course.courseName || "").toUpperCase();
+                chrome.storage.local.get(["userCustomCredits", "courseCredits"], (res) => {
+                  const userCreds = res?.userCustomCredits || {};
+                  const courseCreds = res?.courseCredits || {};
+                  if (codeKey) {
+                    userCreds[codeKey] = newCr;
+                    courseCreds[codeKey] = newCr;
+                  }
+                  if (idKey) {
+                    userCreds[idKey] = newCr;
+                    courseCreds[idKey] = newCr;
+                  }
+                  if (nameKey) {
+                    userCreds[nameKey] = newCr;
+                    courseCreds[nameKey] = newCr;
+                  }
+                  chrome.storage.local.set({
+                    userCustomCredits: userCreds,
+                    courseCredits: courseCreds
+                  });
                 });
               }
             } catch (_) {
@@ -1285,20 +1368,32 @@
             render();
           });
         }
-        tdPred.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-          <div style="display:inline-flex; align-items:center; gap:4px;">
-            <span style="font-size:13px; font-weight:800; color:var(--mujx-accent, #2dd4bf);">${provGrade}</span>
-            <span style="font-size:10px; opacity:0.7;">(${totalScore}/100)</span>
+        if (predCourse?.isSatisfactory) {
+          const isPass = (predCourse?.projectedTotal ?? 0) >= 35;
+          const sGrade = isPass ? "S" : "U";
+          const sColor = isPass ? "#10b981" : "#ef4444";
+          tdPred.innerHTML = `
+          <div style="display:flex; justify-content:center; align-items:center;">
+            <span style="font-size:14px; font-weight:800; color:${sColor};">${sGrade}</span>
           </div>
-          <div style="font-size:10.5px; opacity:0.7; display:flex; align-items:center; gap:2px;">
-            <span>ETE:</span>
-            <input type="number" min="0" max="40" value="${estEte}" data-course-ete="${course.id}" style="width:38px; padding:1px 3px; font-size:10px; border-radius:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.5); color:#fff; text-align:center;" />
+        `;
+        } else {
+          tdPred.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <div style="display:inline-flex; align-items:center; gap:4px;">
+              <span style="font-size:13px; font-weight:800; color:var(--mujx-accent, #2dd4bf);">${provGrade}</span>
+              <span style="font-size:10px; opacity:0.7;">(${totalScore}/100)</span>
+            </div>
+            <div style="font-size:10.5px; opacity:0.7; display:flex; align-items:center; gap:2px;">
+              <span>ETE:</span>
+              <input type="number" min="0" max="40" value="${estEte}" data-course-ete="${course.id}" style="width:38px; padding:1px 3px; font-size:10px; border-radius:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.5); color:#fff; text-align:center;" />
+            </div>
           </div>
-          ${course.officialGrade ? `<span style="font-size:9.5px; color:#10b981; font-weight:600;">Official: ${escapeHtml(course.officialGrade)}</span>` : ""}
-        </div>
-      `;
-        if (course.courseType === "theory") {
+        `;
+        }
+        if (predCourse?.isSatisfactory) {
+          tdTarget.innerHTML = `<span style="font-size:10.5px; opacity:0.4;">\u2014</span>`;
+        } else if (course.courseType === "theory") {
           tdTarget.innerHTML = `
           <button type="button" class="mujx-ete-target-btn" data-course-id="${course.id}" style="padding:4px 8px; font-size:11px; font-weight:600; border-radius:5px; background:rgba(13,148,136,0.15); border:1px solid rgba(13,148,136,0.4); color:var(--mujx-accent, #2dd4bf); cursor:pointer; white-space:nowrap;">
             \u{1F3AF} ETE Target
@@ -1341,48 +1436,99 @@
     "use strict";
     if (window.__mujxMarksLoaded) return;
     window.__mujxMarksLoaded = true;
+    const knownSatisfactoryMap = { MEE1007: true };
+    const storedUserCustomCredits = {};
+    const storedCourseCredits = {};
+    async function loadStorageCache() {
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          const stored = await new Promise(
+            (res) => chrome.storage.local.get(
+              ["userCustomCredits", "courseCredits", "satisfactoryCourses", "subjectGrades"],
+              (d) => res(d || {})
+            )
+          );
+          if (stored?.courseCredits) Object.assign(storedCourseCredits, stored.courseCredits);
+          if (stored?.userCustomCredits) Object.assign(storedUserCustomCredits, stored.userCustomCredits);
+          if (stored?.satisfactoryCourses) Object.assign(knownSatisfactoryMap, stored.satisfactoryCourses);
+          if (stored?.subjectGrades) {
+            Object.entries(stored.subjectGrades).forEach(([k, g]) => {
+              if (g === "S" || g === "U" || g === "AP") knownSatisfactoryMap[k] = true;
+            });
+          }
+        }
+      } catch (_) {
+      }
+    }
     async function runMarksEnhancer() {
       const tables = document.querySelectorAll("table");
       for (const table of tables) {
         const summary = parseInternalMarksSummaryTable(table);
         if (summary.available && summary.courses.length) {
           const sem = document.getElementById("ddlSemester")?.value || "";
-          applyCredits(summary.courses, {});
-          renderMarks(table, summary);
+          await loadStorageCache();
+          applyCredits(summary.courses, storedCourseCredits, storedUserCustomCredits, knownSatisfactoryMap);
+          renderMarks(table, summary, knownSatisfactoryMap);
           try {
             const resolvedMap = await resolveAllCredits(sem);
-            if (applyCredits(summary.courses, resolvedMap)) {
-              renderMarks(table, summary);
+            if (resolvedMap?.__satisfactory) {
+              Object.assign(knownSatisfactoryMap, resolvedMap.__satisfactory);
             }
+            if (resolvedMap?.__userCustom) {
+              Object.assign(storedUserCustomCredits, resolvedMap.__userCustom);
+            }
+            applyCredits(summary.courses, resolvedMap, storedUserCustomCredits, knownSatisfactoryMap);
+            renderMarks(table, summary, knownSatisfactoryMap, true);
           } catch (_) {
           }
           break;
         }
       }
     }
-    function applyCredits(courses, credMap) {
+    function applyCredits(courses, credMap = {}, userCustomMap = {}, satisfactoryMap = {}) {
       let changed = false;
       courses.forEach((c) => {
-        const key = c.courseCode || c.id;
-        if (credMap && credMap[key]) {
-          const val = Number(credMap[key]);
+        const codeKey = (c.courseCode || "").toUpperCase();
+        const idKey = (c.id || "").toUpperCase();
+        const nameKey = (c.courseName || "").toUpperCase();
+        const isSat = isSatisfactorySubject(c, satisfactoryMap);
+        const isLabOrPblOrSat = c.courseType === "lab" || c.courseType === "pbl" || isSat;
+        const userVal = userCustomMap[codeKey] ?? userCustomMap[idKey] ?? userCustomMap[nameKey];
+        if (userVal !== void 0 && userVal !== null && !isNaN(Number(userVal))) {
+          const num = Number(userVal);
+          if (c.credits !== num) {
+            c.credits = num;
+            changed = true;
+          }
+          return;
+        }
+        if (isLabOrPblOrSat) {
+          if (c.credits !== 1) {
+            c.credits = 1;
+            changed = true;
+          }
+          return;
+        }
+        const mapVal = credMap[codeKey] ?? credMap[idKey] ?? credMap[nameKey];
+        if (mapVal !== void 0 && mapVal !== null && !isNaN(Number(mapVal))) {
+          const val = Number(mapVal);
           if (c.credits !== val) {
             c.credits = val;
             changed = true;
           }
-        } else if (!c.credits || c.credits === 4) {
-          const inferred = inferCourseCredits(c.courseName, c.courseCode, c.courseType);
-          if (c.credits !== inferred) {
-            c.credits = inferred;
-            changed = true;
-          }
+          return;
+        }
+        const inferred = inferCourseCredits(c.courseName, c.courseCode, c.courseType, isSat);
+        if (c.credits !== inferred) {
+          c.credits = inferred;
+          changed = true;
         }
       });
       return changed;
     }
-    function renderMarks(table, summary) {
-      const dataSig = summary.courses.map((c) => `${c.id}:${c.internalSubtotal}:${c.mte}:${c.cws}:${c.prs}:${c.credits}`).join(";");
-      if (table.getAttribute("data-mujx-marks-sig") === dataSig && table.querySelector(`[${INJECT_ATTR}="marks-pred-col"]`)) {
+    function renderMarks(table, summary, satisfactoryMap = {}, force = false) {
+      const dataSig = summary.courses.map((c) => `${c.id}:${c.internalSubtotal}:${c.mte}:${c.cws}:${c.prs}:${c.credits}:${Boolean(satisfactoryMap[c.courseCode || c.id])}`).join(";");
+      if (!force && table.getAttribute("data-mujx-marks-sig") === dataSig && table.querySelector(`[${INJECT_ATTR}="marks-pred-col"]`)) {
         return;
       }
       table.querySelectorAll(`[${INJECT_ATTR}]`).forEach((el) => el.remove());
@@ -1395,7 +1541,8 @@
         courses: summary.courses,
         headerRow: summary.headerRow,
         allRows: summary.allRows,
-        headerRowIndex: summary.headerRowIndex
+        headerRowIndex: summary.headerRowIndex,
+        satisfactoryMap
       });
     }
     if (document.readyState === "loading") {

@@ -12,6 +12,7 @@ import {
   isGradeEvaluative,
   isGradeSupported,
   isNonEvaluativeGrade,
+  isSatisfactorySubject,
   MUJ_GRADE_POINT_MAP,
   normalizeGrade,
 } from "../src/calculations/grade-points.js";
@@ -290,4 +291,26 @@ test("Case 18: Grade prediction and simulation", () => {
   const result = predictLetterFromAbsolute(91, [{ letter: "A+", minPercent: 90 }]);
   assert.equal(result.letter, "A+");
   assert.match(result.assumption, /not official/i);
+});
+
+// 19. Satisfactory / Unsatisfactory subject detection and SGPA exclusion
+test("Case 19: isSatisfactorySubject detects S/U subjects and excludes from SGPA calculation", () => {
+  assert.equal(isSatisfactorySubject({ courseCode: "MEE1007" }), true);
+  assert.equal(isSatisfactorySubject({ courseName: "CREATIVITY & INNOVATION" }), true);
+  assert.equal(isSatisfactorySubject({ courseCode: "LAS1010", officialGrade: "S" }), true);
+  assert.equal(isSatisfactorySubject({ courseCode: "CUSTOM101" }, { CUSTOM101: true }), true);
+  assert.equal(isSatisfactorySubject({ courseCode: "CHY1001", courseName: "ENGINEERING CHEMISTRY" }), false);
+  assert.equal(isSatisfactorySubject({ courseCode: "LLC1010", courseName: "TECHNICAL WRITING CLINIC 1" }), false);
+
+  const courses = [
+    { courseCode: "CHY1001", credits: 4, grade: "B" }, // 4 * 8 = 32
+    { courseCode: "MEE1007", credits: 2, grade: "S", excludeFromGpa: true }, // S excluded
+    { courseCode: "LLC1010", credits: 1, grade: "C" }, // 1 * 7 = 7
+  ];
+  const res = calculateSGPA(courses);
+  assert.equal(res.ok, true);
+  assert.equal(res.totalCredits, 7); // 4 + 2 + 1
+  assert.equal(res.gradedCredits, 5); // 4 + 1
+  assert.equal(res.totalWeightedPoints, 39); // 32 + 7
+  assert.equal(res.sgpa, 7.8); // 39 / 5 = 7.8
 });

@@ -99,3 +99,29 @@ export function isNonEvaluativeGrade(grade) {
   const key = normalizeGrade(grade);
   return NON_EVALUATIVE_GRADES.includes(key);
 }
+
+/**
+ * Checks whether a course is a Satisfactory/Unsatisfactory (non-evaluative) subject.
+ * @param {Object} course
+ * @param {Record<string, boolean|string>} [satisfactoryMap]
+ * @returns {boolean}
+ */
+export function isSatisfactorySubject(course = {}, satisfactoryMap = {}) {
+  const code = String(course.courseCode || course.code || course.id || "").trim().toUpperCase();
+  const name = String(course.courseName || course.name || course.subject || "").trim().toUpperCase();
+  const officialGrade = String(course.officialGrade || course.grade || course.letter || "").trim().toUpperCase();
+
+  if (officialGrade === "S" || officialGrade === "U" || officialGrade === "AP") {
+    return true;
+  }
+  if (satisfactoryMap) {
+    if (code && satisfactoryMap[code]) return true;
+    if (name && satisfactoryMap[name]) return true;
+  }
+  // Officially known MUJ curriculum S/U courses
+  if (code === "MEE1007" || name.includes("CREATIVITY & INNOVATION") || name.includes("CREATIVITY AND INNOVATION")) {
+    return true;
+  }
+  return false;
+}
+

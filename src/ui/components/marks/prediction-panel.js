@@ -1,5 +1,6 @@
 import { classifyProvisionalGrade, RELATIVE_GRADING_DISCLAIMER } from "../../../calculations/provisional-grade.js";
 import { calculateSGPA } from "../../../calculations/sgpa.js";
+import { isSatisfactorySubject } from "../../../calculations/grade-points.js";
 import { openEteTargetPopover } from "./ete-target-control.js";
 import { escapeHtml } from "../../../shared/dom.js";
 import { INJECT_ATTR } from "../../../shared/constants.js";
@@ -9,7 +10,7 @@ import { INJECT_ATTR } from "../../../shared/constants.js";
  * with marks-based provisional grade prediction, credit-weighted SGPA forecasting,
  * and the theory ETE Target Calculator.
  */
-export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, headerRowIndex }) {
+export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, headerRowIndex, satisfactoryMap = {} }) {
   if (!table || !courses || !courses.length) return () => {};
 
   // Store per-course ETE estimates (default 28 for theory, 25 for labs if applicable)
@@ -115,12 +116,33 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
   function render() {
     // 1. Calculate projected total and provisional grade for each course
     const predictedCourseList = courses.map((course) => {
+      const isSatisfactory = isSatisfactorySubject(course, satisfactoryMap);
+      if (isSatisfactory) {
+        const totalMarks = (course.internalSubtotal !== null && course.internalSubtotal !== undefined)
+          ? course.internalSubtotal
+          : (course.declaredTotal ?? course.prs ?? 0);
+        const isPass = totalMarks >= 35;
+        const provGrade = isPass ? "S" : "U";
+        return {
+          ...course,
+          isSatisfactory: true,
+          estimatedEte: 0,
+          projectedTotal: totalMarks,
+          provisionalGrade: provGrade,
+          provisionalStatus: isPass ? "pass" : "fail",
+          grade: provGrade,
+          letter: provGrade,
+          excludeFromGpa: true,
+        };
+      }
+
       const estimatedEte = courseEteEstimates[course.id] ?? (course.courseType === "theory" ? 28 : 25);
       const projectedTotal = course.internalSubtotal + estimatedEte;
       const provisional = classifyProvisionalGrade(projectedTotal, course.courseType);
 
       return {
         ...course,
+        isSatisfactory: false,
         estimatedEte,
         projectedTotal,
         provisionalGrade: provisional.grade,
@@ -203,14 +225,16 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
 
       // Render Credits Selector if custom credits column injected
       if (tdCredit) {
-        const crVal = course.credits ?? 3;
+        const isSat = Boolean(predCourse?.isSatisfactory);
+        const defaultCr = (course.courseType === "lab" || course.courseType === "pbl" || isSat) ? 1 : 3;
+        const crVal = course.credits ?? defaultCr;
         tdCredit.innerHTML = `
           <select class="mujx-credit-dropdown" style="padding:2px 5px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.4); color:inherit; font-weight:700; cursor:pointer;" title="Adjust course credits">
-            <option value="1" ${crVal === 1 ? "selected" : ""}>1 cr</option>
-            <option value="2" ${crVal === 2 ? "selected" : ""}>2 cr</option>
-            <option value="3" ${crVal === 3 ? "selected" : ""}>3 cr</option>
-            <option value="4" ${crVal === 4 ? "selected" : ""}>4 cr</option>
-            <option value="0" ${crVal === 0 ? "selected" : ""}>0 cr</option>
+            <option value="1" ${crVal === 1 ? "selected" : ""}>1</option>
+            <option value="2" ${crVal === 2 ? "selected" : ""}>2</option>
+            <option value="3" ${crVal === 3 ? "selected" : ""}>3</option>
+            <option value="4" ${crVal === 4 ? "selected" : ""}>4</option>
+            <option value="0" ${crVal === 0 ? "selected" : ""}>0</option>
           </select>
         `;
         tdCredit.querySelector("select")?.addEventListener("change", (e) => {
@@ -218,10 +242,31 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
           course.credits = newCr;
           try {
             if (typeof chrome !== "undefined" && chrome.storage?.local) {
-              const key = course.courseCode || course.id;
-              chrome.storage.local.get("courseCredits", (res) => {
-                const prev = res?.courseCredits || {};
-                chrome.storage.local.set({ courseCredits: { ...prev, [key]: newCr } });
+              const codeKey = (course.courseCode || "").toUpperCase();
+              const idKey = (course.id || "").toUpperCase();
+              const nameKey = (course.courseName || "").toUpperCase();
+
+              chrome.storage.local.get(["userCustomCredits", "courseCredits"], (res) => {
+                const userCreds = res?.userCustomCredits || {};
+                const courseCreds = res?.courseCredits || {};
+
+                if (codeKey) {
+                  userCreds[codeKey] = newCr;
+                  courseCreds[codeKey] = newCr;
+                }
+                if (idKey) {
+                  userCreds[idKey] = newCr;
+                  courseCreds[idKey] = newCr;
+                }
+                if (nameKey) {
+                  userCreds[nameKey] = newCr;
+                  courseCreds[nameKey] = newCr;
+                }
+
+                chrome.storage.local.set({
+                  userCustomCredits: userCreds,
+                  courseCredits: courseCreds,
+                });
               });
             }
           } catch (_) {}
@@ -230,22 +275,34 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
       }
 
       // Render Predicted Grade Cell
-      tdPred.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-          <div style="display:inline-flex; align-items:center; gap:4px;">
-            <span style="font-size:13px; font-weight:800; color:var(--mujx-accent, #2dd4bf);">${provGrade}</span>
-            <span style="font-size:10px; opacity:0.7;">(${totalScore}/100)</span>
+      if (predCourse?.isSatisfactory) {
+        const isPass = (predCourse?.projectedTotal ?? 0) >= 35;
+        const sGrade = isPass ? "S" : "U";
+        const sColor = isPass ? "#10b981" : "#ef4444";
+        tdPred.innerHTML = `
+          <div style="display:flex; justify-content:center; align-items:center;">
+            <span style="font-size:14px; font-weight:800; color:${sColor};">${sGrade}</span>
           </div>
-          <div style="font-size:10.5px; opacity:0.7; display:flex; align-items:center; gap:2px;">
-            <span>ETE:</span>
-            <input type="number" min="0" max="40" value="${estEte}" data-course-ete="${course.id}" style="width:38px; padding:1px 3px; font-size:10px; border-radius:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.5); color:#fff; text-align:center;" />
+        `;
+      } else {
+        tdPred.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <div style="display:inline-flex; align-items:center; gap:4px;">
+              <span style="font-size:13px; font-weight:800; color:var(--mujx-accent, #2dd4bf);">${provGrade}</span>
+              <span style="font-size:10px; opacity:0.7;">(${totalScore}/100)</span>
+            </div>
+            <div style="font-size:10.5px; opacity:0.7; display:flex; align-items:center; gap:2px;">
+              <span>ETE:</span>
+              <input type="number" min="0" max="40" value="${estEte}" data-course-ete="${course.id}" style="width:38px; padding:1px 3px; font-size:10px; border-radius:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.5); color:#fff; text-align:center;" />
+            </div>
           </div>
-          ${course.officialGrade ? `<span style="font-size:9.5px; color:#10b981; font-weight:600;">Official: ${escapeHtml(course.officialGrade)}</span>` : ""}
-        </div>
-      `;
+        `;
+      }
 
-      // Render ETE Calculator Target Button (only for theory courses)
-      if (course.courseType === "theory") {
+      // Render ETE Calculator Target Button (only for evaluative theory courses)
+      if (predCourse?.isSatisfactory) {
+        tdTarget.innerHTML = `<span style="font-size:10.5px; opacity:0.4;">—</span>`;
+      } else if (course.courseType === "theory") {
         tdTarget.innerHTML = `
           <button type="button" class="mujx-ete-target-btn" data-course-id="${course.id}" style="padding:4px 8px; font-size:11px; font-weight:600; border-radius:5px; background:rgba(13,148,136,0.15); border:1px solid rgba(13,148,136,0.4); color:var(--mujx-accent, #2dd4bf); cursor:pointer; white-space:nowrap;">
             🎯 ETE Target

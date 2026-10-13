@@ -786,19 +786,25 @@
             try {
               const gradesMap = {};
               const creditsMap = {};
+              const satisfactoryMap = {};
               gradeSheetData.records.forEach((r) => {
                 if (r.courseCode) {
                   if (r.letter) gradesMap[r.courseCode] = r.letter;
                   if (r.credits) creditsMap[r.courseCode] = r.credits;
+                  if (r.letter === "S" || r.letter === "U" || r.letter === "AP") {
+                    satisfactoryMap[r.courseCode] = true;
+                  }
                 }
               });
               if (typeof chrome !== "undefined" && chrome.storage?.local) {
-                chrome.storage.local.get(["subjectGrades", "courseCredits"], (res) => {
+                chrome.storage.local.get(["subjectGrades", "courseCredits", "satisfactoryCourses"], (res) => {
                   const prevG = res?.subjectGrades || {};
                   const prevC = res?.courseCredits || {};
+                  const prevS = res?.satisfactoryCourses || {};
                   chrome.storage.local.set({
                     subjectGrades: { ...prevG, ...gradesMap },
-                    courseCredits: { ...prevC, ...creditsMap }
+                    courseCredits: { ...prevC, ...creditsMap },
+                    satisfactoryCourses: { ...prevS, ...satisfactoryMap }
                   });
                 });
               }

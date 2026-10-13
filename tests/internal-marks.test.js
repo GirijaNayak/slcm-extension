@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseInternalMarksSummaryTable } from "../src/data/marks-adapter.js";
 import { classifyCourseType } from "../src/calculations/provisional-grade.js";
+import { inferCourseCredits } from "../src/data/credit-resolver.js";
 
 // Mock helper to build an HTML table element with rows and cells
 function createMockTable(headers, rows) {
@@ -94,3 +95,19 @@ test("parseInternalMarksSummaryTable ignores tables without internal marks colum
   assert.equal(result.available, false);
   assert.equal(result.courses.length, 0);
 });
+
+test("inferCourseCredits presets all Lab, PBL, and S/U courses to 1 credit", () => {
+  // Labs
+  assert.equal(inferCourseCredits("DATA STRUCTURES LAB", "CSE2131", "lab"), 1);
+  assert.equal(inferCourseCredits("PHYSICS LAB", "PHY1030", "lab"), 1);
+  // PBL
+  assert.equal(inferCourseCredits("PROJECT BASED LEARNING 1", "CSE2170", "pbl"), 1);
+  assert.equal(inferCourseCredits("PROJECT BASED LEARNING 2", "CSE2270", "pbl"), 1);
+  // S/U courses
+  assert.equal(inferCourseCredits("CREATIVITY & INNOVATION", "MEE1007", "theory", true), 1);
+  assert.equal(inferCourseCredits("Any S/U Subject", "ABC1001", "theory", true), 1);
+  // Evaluative theory courses
+  assert.equal(inferCourseCredits("CALCULUS & MATRICES", "MAS1001", "theory", false), 4);
+  assert.equal(inferCourseCredits("OPERATING SYSTEMS", "CSE2103", "theory", false), 3);
+});
+

@@ -62,15 +62,24 @@ export function classifyCourseType(course = {}) {
     return "pbl";
   }
 
+  const hasTheoryComponents =
+    (course.mte !== null && course.mte !== undefined) ||
+    (course.mte1 !== null && course.mte1 !== undefined) ||
+    (course.cws !== null && course.cws !== undefined);
+  const hasPrs = course.prs !== null && course.prs !== undefined;
+
+  // Courses with theory components (MTE/CWS) and no PRS are theory courses
+  if (hasTheoryComponents && !hasPrs) {
+    return "theory";
+  }
+
+  // Labs using whole-word matching to avoid matching substrings like "MATLAB"
   if (
-    name.includes("LAB") ||
-    name.includes("PRACTICAL") ||
-    name.includes("WORKSHOP") ||
-    name.includes("CLINIC") ||
+    /\b(LAB|LABORATORY|PRACTICAL|WORKSHOP)\b/i.test(name) ||
     code.endsWith("L") ||
     code.endsWith("P") ||
     /(?:103\d|213\d|313\d|323\d)/.test(code) || // MUJ lab course code convention (e.g. CSE1031, CSE2131)
-    (course.prs !== undefined && course.prs !== null && !course.mte && !course.mte1)
+    (hasPrs && !hasTheoryComponents)
   ) {
     return "lab";
   }

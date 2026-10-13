@@ -4,35 +4,40 @@ import { parseGradesTable } from "./grades-adapter.js";
  * Intelligently infers course credits based on standard MUJ course codes,
  * course titles, and course types when explicit credits are unavailable in the DOM.
  */
-export function inferCourseCredits(courseName = "", courseCode = "", courseType = "theory") {
-  const name = courseName.toLowerCase();
-  const code = courseCode.toUpperCase();
+export function inferCourseCredits(courseName = "", courseCode = "", courseType = "theory", isSatisfactory = false) {
+  const name = String(courseName || "").toLowerCase();
+  const code = String(courseCode || "").toUpperCase();
 
-  // 1. Project-Based Learning & Non-Standard Credits
-  if (name.includes("project-based learning 2") || name.includes("pbl 2") || code === "CSE2270") {
-    return 2;
-  }
-  if (name.includes("project-based learning 1") || name.includes("pbl 1") || code === "CSE1270") {
-    return 1;
-  }
-  if (name.includes("creativity & innovation") || name.includes("creativity and innovation") || code === "MEE1007") {
-    return 2;
-  }
-  if (name.includes("technical writing") || code.startsWith("LLC")) {
-    return 1;
-  }
-
-  // 2. Labs & Practicals (usually 1 credit)
+  // 1. All Labs, PBL, and Satisfactory/Unsatisfactory (S/U) courses are preset to 1 credit
   if (
     courseType === "lab" ||
-    name.includes("lab") ||
-    name.includes("practical") ||
+    courseType === "pbl" ||
+    isSatisfactory ||
+    code === "MEE1007" ||
+    name.includes("creativity & innovation") ||
+    name.includes("creativity and innovation") ||
+    name.includes("pbl") ||
+    name.includes("project-based") ||
+    name.includes("project based") ||
+    code.includes("PBL") ||
+    code === "CSE1270" ||
+    code === "CSE2170" ||
+    code === "CSE2270" ||
+    code === "CSE3170" ||
+    /\b(lab|laboratory|practical|workshop)\b/i.test(name) ||
+    code.endsWith("L") ||
+    code.endsWith("P") ||
+    /(?:103\d|213\d|313\d|323\d)/.test(code) ||
     /(?:30|31|32|33|34|35|36|37|38|39)$/.test(code)
   ) {
     return 1;
   }
 
-  // 3. Core 4-credit courses (heavy foundations / core engineering mathematics & theory)
+  if (name.includes("technical writing") || code.startsWith("LLC")) {
+    return 1;
+  }
+
+  // 2. Core 4-credit courses (heavy foundations / core engineering mathematics & theory)
   if (
     code === "CSE2201" || // Design and Analysis of Algorithm
     code === "CSE2240" || // Automata and Compiler Design
@@ -47,7 +52,7 @@ export function inferCourseCredits(courseName = "", courseCode = "", courseType 
     return 4;
   }
 
-  // 4. Standard MUJ theory courses (OS, Cryptography, Economics, Marketing, etc.) are 3 credits
+  // 3. Standard MUJ theory courses (OS, Cryptography, Economics, Marketing, etc.) are 3 credits
   return 3;
 }
 
@@ -61,14 +66,25 @@ export function inferCourseCredits(courseName = "", courseCode = "", courseType 
  */
 export async function resolveAllCredits(sem = "") {
   const merged = {};
+  const userCustom = {};
+  const satisfactory = {
+    MEE1007: true,
+  };
 
-  // 1. Stored credits from chrome.storage.local
+  // 1. Stored credits, user custom choices, and satisfactory courses from chrome.storage.local
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       const stored = await new Promise((res) =>
-        chrome.storage.local.get("courseCredits", (d) => res(d?.courseCredits || {}))
+        chrome.storage.local.get(["userCustomCredits", "courseCredits", "satisfactoryCourses", "subjectGrades"], (d) => res(d || {}))
       );
-      Object.assign(merged, stored);
+      if (stored?.courseCredits) Object.assign(merged, stored.courseCredits);
+      if (stored?.userCustomCredits) Object.assign(userCustom, stored.userCustomCredits);
+      if (stored?.satisfactoryCourses) Object.assign(satisfactory, stored.satisfactoryCourses);
+      if (stored?.subjectGrades) {
+        Object.entries(stored.subjectGrades).forEach(([k, g]) => {
+          if (g === "S" || g === "U" || g === "AP") satisfactory[k] = true;
+        });
+      }
     }
   } catch (_) {}
 
@@ -83,6 +99,9 @@ export async function resolveAllCredits(sem = "") {
         const data = parseGradesTable(table);
         data.records.forEach((r) => {
           if (r.courseCode && r.credits) merged[r.courseCode] = r.credits;
+          if (r.courseCode && (r.letter === "S" || r.letter === "U" || r.letter === "AP")) {
+            satisfactory[r.courseCode] = true;
+          }
         });
       }
     }
@@ -129,15 +148,28 @@ export async function resolveAllCredits(sem = "") {
     }
   } catch (_) {}
 
-  // Persist updated credits back to storage
+  // 5. User custom overrides ALWAYS take highest priority over network values
+  Object.assign(merged, userCustom);
+
+  // 6. Persist updated credits and satisfactory courses back to storage
   try {
-    if (typeof chrome !== "undefined" && chrome.storage?.local && Object.keys(merged).length > 0) {
-      chrome.storage.local.get("courseCredits", (res) => {
-        const prev = res?.courseCredits || {};
-        chrome.storage.local.set({ courseCredits: { ...prev, ...merged } });
-      });
+    if (typeof chrome !== "undefined" && chrome.storage?.local) {
+      if (Object.keys(merged).length > 0) {
+        chrome.storage.local.get("courseCredits", (res) => {
+          const prev = res?.courseCredits || {};
+          chrome.storage.local.set({ courseCredits: { ...prev, ...merged } });
+        });
+      }
+      if (Object.keys(satisfactory).length > 0) {
+        chrome.storage.local.get("satisfactoryCourses", (res) => {
+          const prev = res?.satisfactoryCourses || {};
+          chrome.storage.local.set({ satisfactoryCourses: { ...prev, ...satisfactory } });
+        });
+      }
     }
   } catch (_) {}
 
+  merged.__satisfactory = satisfactory;
+  merged.__userCustom = userCustom;
   return merged;
 }

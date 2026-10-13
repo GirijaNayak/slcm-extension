@@ -133,16 +133,24 @@ export function parseInternalMarksSummaryTable(table) {
       }
     }
 
-    const courseType = classifyCourseType({ courseName, courseCode, prs, mte });
+    const courseType = classifyCourseType({ courseName, courseCode, prs, mte, mte1, cws });
 
     // Internal subtotal
     let internalSubtotal = 0;
     if (courseType === "lab" || courseType === "pbl") {
-      internalSubtotal = prs !== null ? prs : declaredTotal !== null ? declaredTotal : 0;
+      if (prs !== null) {
+        internalSubtotal = prs;
+      } else if (mte !== null || cws !== null) {
+        internalSubtotal = (mte !== null ? mte : 0) + (cws !== null ? cws : 0);
+      } else if (declaredTotal !== null) {
+        internalSubtotal = declaredTotal;
+      }
     } else {
       internalSubtotal = (mte !== null ? mte : 0) + (cws !== null ? cws : 0);
       if (internalSubtotal === 0 && declaredTotal !== null) {
         internalSubtotal = declaredTotal;
+      } else if (internalSubtotal === 0 && prs !== null) {
+        internalSubtotal = prs;
       }
     }
 
