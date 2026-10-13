@@ -12,18 +12,20 @@ import { INJECT_ATTR } from "../shared/constants.js";
   const knownSatisfactoryMap = { MEE1007: true };
   const storedUserCustomCredits = {};
   const storedCourseCredits = {};
+  const storedUserCustomEte = {};
 
   async function loadStorageCache() {
     try {
       if (typeof chrome !== "undefined" && chrome.storage?.local) {
         const stored = await new Promise((res) =>
           chrome.storage.local.get(
-            ["userCustomCredits", "courseCredits", "satisfactoryCourses", "subjectGrades"],
+            ["userCustomCredits", "courseCredits", "satisfactoryCourses", "subjectGrades", "userCustomEteEstimates"],
             (d) => res(d || {})
           )
         );
         if (stored?.courseCredits) Object.assign(storedCourseCredits, stored.courseCredits);
         if (stored?.userCustomCredits) Object.assign(storedUserCustomCredits, stored.userCustomCredits);
+        if (stored?.userCustomEteEstimates) Object.assign(storedUserCustomEte, stored.userCustomEteEstimates);
         if (stored?.satisfactoryCourses) Object.assign(knownSatisfactoryMap, stored.satisfactoryCourses);
         if (stored?.subjectGrades) {
           Object.entries(stored.subjectGrades).forEach(([k, g]) => {
@@ -58,7 +60,11 @@ import { INJECT_ATTR } from "../shared/constants.js";
             Object.assign(storedUserCustomCredits, resolvedMap.__userCustom);
           }
           applyCredits(summary.courses, resolvedMap, storedUserCustomCredits, knownSatisfactoryMap);
-          renderMarks(table, summary, knownSatisfactoryMap, true);
+          const activeEl = document.activeElement;
+          const isTyping = activeEl && activeEl.tagName === "INPUT" && table.contains(activeEl);
+          if (!isTyping) {
+            renderMarks(table, summary, knownSatisfactoryMap, true);
+          }
         } catch (_) {}
 
         break;
@@ -144,6 +150,7 @@ import { INJECT_ATTR } from "../shared/constants.js";
       allRows: summary.allRows,
       headerRowIndex: summary.headerRowIndex,
       satisfactoryMap,
+      initialEteEstimates: storedUserCustomEte,
     });
   }
 
@@ -154,6 +161,7 @@ import { INJECT_ATTR } from "../shared/constants.js";
   }
 
   document.addEventListener("click", (e) => {
+    if (e.target.closest(`[${INJECT_ATTR}], .mujx-ete-popover`)) return;
     const btn = e.target.closest("button, input[type=submit], input[type=button], a");
     if (btn) {
       setTimeout(runMarksEnhancer, 150);
@@ -163,6 +171,7 @@ import { INJECT_ATTR } from "../shared/constants.js";
   }, true);
 
   document.addEventListener("change", (e) => {
+    if (e.target.closest(`[${INJECT_ATTR}], .mujx-ete-popover`)) return;
     if (e.target.closest("select")) {
       setTimeout(runMarksEnhancer, 150);
       setTimeout(runMarksEnhancer, 500);

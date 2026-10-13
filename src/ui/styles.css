@@ -566,8 +566,8 @@ th[data-mujx="attendance-intel"], td[data-mujx="attendance-intel"] {
 
 /* Grade Sheet Enhancer & Predictor Styles */
 .mujx-grade-banner {
-  background: rgba(13, 148, 136, 0.08);
-  border: 1px solid rgba(13, 148, 136, 0.3);
+  background: #1e1e2d;
+  border: 1px solid #2d2d3f;
   border-radius: 10px;
   padding: 14px 18px;
   margin-bottom: 14px;
@@ -575,6 +575,7 @@ th[data-mujx="attendance-intel"], td[data-mujx="attendance-intel"] {
   flex-direction: column;
   gap: 10px;
   box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .mujx-grade-banner-main {
@@ -589,25 +590,26 @@ th[data-mujx="attendance-intel"], td[data-mujx="attendance-intel"] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  background: rgba(13, 148, 136, 0.18);
-  border: 1px solid rgba(13, 148, 136, 0.4);
+  background: #1e1e2d;
+  border: 1px solid #2d2d3f;
   border-radius: 8px;
-  padding: 6px 16px;
+  padding: 8px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .mujx-grade-sgpa-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #0d9488;
+  color: #94a3b8;
 }
 
 .mujx-grade-sgpa-value {
   font-size: 26px;
   font-weight: 800;
-  line-height: 1.1;
-  color: #0d9488;
+  line-height: 1.15;
+  color: #f1f5f9;
 }
 
 .mujx-grade-stats {
@@ -625,12 +627,12 @@ th[data-mujx="attendance-intel"], td[data-mujx="attendance-intel"] {
 .mujx-stat-num {
   font-size: 17px;
   font-weight: 700;
-  color: inherit;
+  color: #f1f5f9;
 }
 
 .mujx-stat-lbl {
   font-size: 11px;
-  opacity: 0.7;
+  color: #94a3b8;
 }
 
 .mujx-grade-actions {
@@ -675,6 +677,29 @@ th[data-mujx="attendance-intel"], td[data-mujx="attendance-intel"] {
   border: 1px solid rgba(125, 125, 125, 0.3);
   border-radius: 6px;
   cursor: pointer;
+}
+
+.mujx-ete-target-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: #1e1e2d;
+  border: 1px solid #2d2d3f;
+  color: #f1f5f9;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.mujx-ete-target-btn:hover {
+  background: #28283a;
+  border-color: #3e3e57;
+  color: #ffffff;
 }
 
 .mujx-calc-toggle-btn {

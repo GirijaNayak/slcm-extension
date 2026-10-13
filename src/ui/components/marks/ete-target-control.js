@@ -59,6 +59,7 @@ export function openEteTargetPopover({ anchorEl, course, defaultTarget = "A" }) 
         ? "ℹ CWS Pending"
         : "Unresolved";
 
+
     popover.innerHTML = `
       <div class="mujx-popover-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; border-bottom:1px solid rgba(125,125,125,0.25); padding-bottom:8px;">
         <div>
@@ -146,30 +147,38 @@ export function openEteTargetPopover({ anchorEl, course, defaultTarget = "A" }) 
       </div>
     `;
 
-    // Position near anchor
-    positionPopover(popover, anchorEl);
-
     // Event handlers
     popover.querySelectorAll("[data-grade]").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
         currentTarget = btn.dataset.grade;
         render();
       });
     });
 
-    popover.querySelector("[data-role=close-popover]")?.addEventListener("click", () => {
+    popover.querySelector("[data-role=close-popover]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
       closeActiveEtePopover();
     });
 
     const cwsInput = popover.querySelector("[data-role=cws-estimate-input]");
     cwsInput?.addEventListener("input", (e) => {
+      e.stopPropagation();
       const val = Number(e.target.value);
       customCwsEstimate = Number.isFinite(val) && val >= 0 ? val : null;
       render();
     });
   }
 
+  // Prevent popover clicks from bubbling to global window handlers
+  popover.addEventListener("click", (e) => e.stopPropagation());
+  popover.addEventListener("mousedown", (e) => e.stopPropagation());
+
+  // Initial render then position once next to anchor
   render();
+  positionPopover(popover, anchorEl, course);
 
   // Escape key and outside click listeners
   const onKeydown = (e) => {
@@ -198,22 +207,53 @@ export function closeActiveEtePopover() {
   }
 }
 
-function positionPopover(popover, anchorEl) {
-  const rect = anchorEl.getBoundingClientRect();
+function positionPopover(popover, anchorEl, course) {
+  // If already positioned, lock position to prevent jumping
+  if (popover.dataset.positioned === "true" && popover.style.left && popover.style.top) {
+    return;
+  }
+
+  const targetAnchor = (anchorEl && anchorEl.isConnected)
+    ? anchorEl
+    : (course?.id ? document.querySelector(`[data-course-id="${course.id}"]`) : null) || anchorEl;
+
+  if (!targetAnchor) return;
+
+  const rect = targetAnchor.getBoundingClientRect();
+  // If element is not rendered or detached with zero rect, do not move
+  if (rect.width === 0 && rect.height === 0 && rect.top === 0 && rect.left === 0) {
+    return;
+  }
+
   const popoverWidth = 330;
-  
-  let left = rect.left + window.scrollX;
-  let top = rect.bottom + window.scrollY + 6;
+  const scrollX = window.scrollX || window.pageXOffset || 0;
+  const scrollY = window.scrollY || window.pageYOffset || 0;
+
+  // Align right edge of popover with right edge of anchor button
+  let left = rect.right + scrollX - popoverWidth;
+
+  // Prevent left overflow
+  if (left < scrollX + 12) {
+    left = scrollX + 12;
+  }
 
   // Prevent right overflow
-  if (left + popoverWidth > window.innerWidth - 16) {
-    left = window.innerWidth - popoverWidth - 16;
+  const maxLeft = scrollX + window.innerWidth - popoverWidth - 16;
+  if (left > maxLeft) {
+    left = maxLeft;
   }
-  if (left < 10) left = 10;
+
+  let top = rect.bottom + scrollY + 6;
+
+  // If opening below would overflow the viewport and opening above fits, flip upward
+  const popoverHeight = popover.offsetHeight || 370;
+  if (rect.bottom + popoverHeight + 12 > window.innerHeight && rect.top - popoverHeight - 6 > 0) {
+    top = rect.top + scrollY - popoverHeight - 6;
+  }
 
   popover.style.position = "absolute";
-  popover.style.left = `${left}px`;
-  popover.style.top = `${top}px`;
+  popover.style.left = `${Math.round(left)}px`;
+  popover.style.top = `${Math.round(top)}px`;
   popover.style.width = `${popoverWidth}px`;
   popover.style.zIndex = "99999";
   popover.style.background = "#181b20";
@@ -223,4 +263,5 @@ function positionPopover(popover, anchorEl) {
   popover.style.padding = "14px";
   popover.style.boxShadow = "0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6)";
   popover.style.boxSizing = "border-box";
+  popover.dataset.positioned = "true";
 }

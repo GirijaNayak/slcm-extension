@@ -10,14 +10,56 @@ import { INJECT_ATTR } from "../../../shared/constants.js";
  * with marks-based provisional grade prediction, credit-weighted SGPA forecasting,
  * and the theory ETE Target Calculator.
  */
-export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, headerRowIndex, satisfactoryMap = {} }) {
+export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, headerRowIndex, satisfactoryMap = {}, initialEteEstimates = {} }) {
   if (!table || !courses || !courses.length) return () => {};
 
-  // Store per-course ETE estimates (default 28 for theory, 25 for labs if applicable)
+  // Store per-course ETE estimates (load initial user estimates or default 28 for theory, 25 for labs)
   const courseEteEstimates = {};
   courses.forEach((c) => {
-    courseEteEstimates[c.id] = c.courseType === "theory" ? 28 : 25;
+    const codeKey = (c.courseCode || "").toUpperCase();
+    const idKey = (c.id || "").toUpperCase();
+    const nameKey = (c.courseName || "").toUpperCase();
+
+    const savedVal =
+      initialEteEstimates[codeKey] ??
+      initialEteEstimates[idKey] ??
+      initialEteEstimates[nameKey] ??
+      initialEteEstimates[c.id];
+
+    if (savedVal !== undefined && savedVal !== null && !isNaN(Number(savedVal))) {
+      courseEteEstimates[c.id] = Number(savedVal);
+    } else {
+      courseEteEstimates[c.id] = c.courseType === "theory" ? 28 : 25;
+    }
   });
+
+  // Load from chrome.storage.local if available to ensure persistence across page refreshes
+  try {
+    if (typeof chrome !== "undefined" && chrome.storage?.local) {
+      chrome.storage.local.get(["userCustomEteEstimates"], (res) => {
+        const stored = res?.userCustomEteEstimates;
+        if (stored && typeof stored === "object") {
+          let hasDiff = false;
+          courses.forEach((c) => {
+            const codeKey = (c.courseCode || "").toUpperCase();
+            const idKey = (c.id || "").toUpperCase();
+            const nameKey = (c.courseName || "").toUpperCase();
+            const val = stored[codeKey] ?? stored[idKey] ?? stored[nameKey] ?? stored[c.id];
+            if (val !== undefined && val !== null && !isNaN(Number(val))) {
+              const num = Number(val);
+              if (courseEteEstimates[c.id] !== num) {
+                courseEteEstimates[c.id] = num;
+                hasDiff = true;
+              }
+            }
+          });
+          if (hasDiff) {
+            render();
+          }
+        }
+      });
+    }
+  } catch (_) {}
 
   // Find column header row
   const theadRows = table.querySelectorAll("thead tr");
@@ -171,50 +213,28 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
 
       <!-- Main Prediction Strip -->
       <div class="mujx-grade-banner-main" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-        <div class="mujx-grade-sgpa-pill" style="background:rgba(13,148,136,0.18); border:1px solid rgba(13,148,136,0.4); border-radius:8px; padding:6px 14px;">
-          <span class="mujx-grade-sgpa-label" style="font-size:10px; font-weight:700; color:#0d9488; letter-spacing:0.04em;">PREDICTED SGPA (FORECAST)</span>
-          <span class="mujx-grade-sgpa-value" style="font-size:24px; font-weight:800; color:#0d9488;">${sgpaText}</span>
+        <div class="mujx-grade-sgpa-pill" style="background:#1e1e2d; border:1px solid #2d2d3f; border-radius:8px; padding:8px 16px; box-shadow:0 1px 3px rgba(0,0,0,0.35); display:flex; flex-direction:column; align-items:flex-start;">
+          <span class="mujx-grade-sgpa-label" style="font-size:10px; font-weight:600; color:#94a3b8; letter-spacing:0.05em; text-transform:uppercase;">PREDICTED SGPA (FORECAST)</span>
+          <span class="mujx-grade-sgpa-value" style="font-size:24px; font-weight:800; color:#f1f5f9; line-height:1.15;">${sgpaText}</span>
         </div>
 
         <div class="mujx-grade-stats" style="display:flex; gap:16px; flex-wrap:wrap;">
           <div class="mujx-grade-stat-item">
-            <span class="mujx-stat-num">${sgpaResult.totalCredits}</span>
-            <span class="mujx-stat-lbl">Total Credits</span>
+            <span class="mujx-stat-num" style="color:#f1f5f9; font-size:17px; font-weight:700;">${sgpaResult.totalCredits}</span>
+            <span class="mujx-stat-lbl" style="color:#94a3b8; font-size:11px;">Total Credits</span>
           </div>
           <div class="mujx-grade-stat-item">
-            <span class="mujx-stat-num">${sgpaResult.evaluatedCount} / ${courses.length}</span>
-            <span class="mujx-stat-lbl">Predicted Courses</span>
+            <span class="mujx-stat-num" style="color:#f1f5f9; font-size:17px; font-weight:700;">${sgpaResult.evaluatedCount} / ${courses.length}</span>
+            <span class="mujx-stat-lbl" style="color:#94a3b8; font-size:11px;">Predicted Courses</span>
           </div>
           <div class="mujx-grade-stat-item">
-            <span class="mujx-stat-num">${sgpaResult.totalWeightedPoints}</span>
-            <span class="mujx-stat-lbl">Total Points (Σ Ci×Gi)</span>
+            <span class="mujx-stat-num" style="color:#f1f5f9; font-size:17px; font-weight:700;">${sgpaResult.totalWeightedPoints}</span>
+            <span class="mujx-stat-lbl" style="color:#94a3b8; font-size:11px;">Total Points (Σ Ci×Gi)</span>
           </div>
         </div>
 
-        <!-- Global Scenario Controls -->
-        <div style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.25); border:1px solid rgba(125,125,125,0.25); border-radius:6px; padding:6px 10px;">
-          <span style="font-size:11px; opacity:0.8;">Global ETE Scenario:</span>
-          <input type="number" min="0" max="40" value="${courseEteEstimates[courses[0]?.id] ?? 28}" data-role="global-ete-input" style="width:48px; padding:3px 6px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.4); border:1px solid #0d9488; color:#fff;" title="Estimated score out of 40 in theory ETE" />
-          <span style="font-size:11px; opacity:0.7;">/ 40</span>
-          <button type="button" data-role="apply-global-ete" style="padding:4px 8px; font-size:11px; font-weight:600; background:#0d9488; color:#fff; border:none; border-radius:4px; cursor:pointer;">
-            Apply All
-          </button>
-        </div>
       </div>
     `;
-
-    // Global ETE handler
-    const applyGlobalBtn = banner.querySelector("[data-role=apply-global-ete]");
-    const globalInput = banner.querySelector("[data-role=global-ete-input]");
-    applyGlobalBtn?.addEventListener("click", () => {
-      const val = Number(globalInput?.value);
-      if (Number.isFinite(val) && val >= 0) {
-        courses.forEach((c) => {
-          courseEteEstimates[c.id] = Math.min(val, c.courseType === "theory" ? 40 : 50);
-        });
-        render();
-      }
-    });
 
     // 4. Update Course Table Rows
     rowInjections.forEach(({ course, tdPred, tdTarget, tdCredit }) => {
@@ -228,50 +248,58 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
         const isSat = Boolean(predCourse?.isSatisfactory);
         const defaultCr = (course.courseType === "lab" || course.courseType === "pbl" || isSat) ? 1 : 3;
         const crVal = course.credits ?? defaultCr;
-        tdCredit.innerHTML = `
-          <select class="mujx-credit-dropdown" style="padding:2px 5px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.4); color:inherit; font-weight:700; cursor:pointer;" title="Adjust course credits">
-            <option value="1" ${crVal === 1 ? "selected" : ""}>1</option>
-            <option value="2" ${crVal === 2 ? "selected" : ""}>2</option>
-            <option value="3" ${crVal === 3 ? "selected" : ""}>3</option>
-            <option value="4" ${crVal === 4 ? "selected" : ""}>4</option>
-            <option value="0" ${crVal === 0 ? "selected" : ""}>0</option>
-          </select>
-        `;
-        tdCredit.querySelector("select")?.addEventListener("change", (e) => {
-          const newCr = Number(e.target.value);
-          course.credits = newCr;
-          try {
-            if (typeof chrome !== "undefined" && chrome.storage?.local) {
-              const codeKey = (course.courseCode || "").toUpperCase();
-              const idKey = (course.id || "").toUpperCase();
-              const nameKey = (course.courseName || "").toUpperCase();
+        const existingSelect = tdCredit.querySelector("select");
 
-              chrome.storage.local.get(["userCustomCredits", "courseCredits"], (res) => {
-                const userCreds = res?.userCustomCredits || {};
-                const courseCreds = res?.courseCredits || {};
+        if (existingSelect) {
+          if (document.activeElement !== existingSelect && Number(existingSelect.value) !== crVal) {
+            existingSelect.value = String(crVal);
+          }
+        } else {
+          tdCredit.innerHTML = `
+            <select class="mujx-credit-dropdown" style="padding:2px 5px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.4); color:inherit; font-weight:700; cursor:pointer;" title="Adjust course credits">
+              <option value="1" ${crVal === 1 ? "selected" : ""}>1</option>
+              <option value="2" ${crVal === 2 ? "selected" : ""}>2</option>
+              <option value="3" ${crVal === 3 ? "selected" : ""}>3</option>
+              <option value="4" ${crVal === 4 ? "selected" : ""}>4</option>
+              <option value="0" ${crVal === 0 ? "selected" : ""}>0</option>
+            </select>
+          `;
+          tdCredit.querySelector("select")?.addEventListener("change", (e) => {
+            const newCr = Number(e.target.value);
+            course.credits = newCr;
+            try {
+              if (typeof chrome !== "undefined" && chrome.storage?.local) {
+                const codeKey = (course.courseCode || "").toUpperCase();
+                const idKey = (course.id || "").toUpperCase();
+                const nameKey = (course.courseName || "").toUpperCase();
 
-                if (codeKey) {
-                  userCreds[codeKey] = newCr;
-                  courseCreds[codeKey] = newCr;
-                }
-                if (idKey) {
-                  userCreds[idKey] = newCr;
-                  courseCreds[idKey] = newCr;
-                }
-                if (nameKey) {
-                  userCreds[nameKey] = newCr;
-                  courseCreds[nameKey] = newCr;
-                }
+                chrome.storage.local.get(["userCustomCredits", "courseCredits"], (res) => {
+                  const userCreds = res?.userCustomCredits || {};
+                  const courseCreds = res?.courseCredits || {};
 
-                chrome.storage.local.set({
-                  userCustomCredits: userCreds,
-                  courseCredits: courseCreds,
+                  if (codeKey) {
+                    userCreds[codeKey] = newCr;
+                    courseCreds[codeKey] = newCr;
+                  }
+                  if (idKey) {
+                    userCreds[idKey] = newCr;
+                    courseCreds[idKey] = newCr;
+                  }
+                  if (nameKey) {
+                    userCreds[nameKey] = newCr;
+                    courseCreds[nameKey] = newCr;
+                  }
+
+                  chrome.storage.local.set({
+                    userCustomCredits: userCreds,
+                    courseCredits: courseCreds,
+                  });
                 });
-              });
-            }
-          } catch (_) {}
-          render();
-        });
+              }
+            } catch (_) {}
+            render();
+          });
+        }
       }
 
       // Render Predicted Grade Cell
@@ -285,48 +313,128 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
           </div>
         `;
       } else {
-        tdPred.innerHTML = `
-          <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-            <div style="display:inline-flex; align-items:center; gap:4px;">
-              <span style="font-size:13px; font-weight:800; color:var(--mujx-accent, #2dd4bf);">${provGrade}</span>
-              <span style="font-size:10px; opacity:0.7;">(${totalScore}/100)</span>
+        const existingInput = tdPred.querySelector(`[data-course-ete="${course.id}"]`);
+        const gradeSpan = tdPred.querySelector(`[data-role="prov-grade"]`);
+        const scoreSpan = tdPred.querySelector(`[data-role="total-score"]`);
+
+        if (existingInput && gradeSpan && scoreSpan) {
+          // In-place update: NEVER destroy the input element or lose cursor position
+          gradeSpan.textContent = provGrade;
+          scoreSpan.textContent = `(${totalScore}/100)`;
+          if (document.activeElement !== existingInput && existingInput.value !== String(estEte)) {
+            existingInput.value = estEte !== undefined && estEte !== null ? String(estEte) : "";
+          }
+        } else {
+          tdPred.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+              <div style="display:inline-flex; align-items:center; gap:4px;">
+                <span data-role="prov-grade" style="font-size:13px; font-weight:800; color:var(--mujx-accent, #2dd4bf);">${provGrade}</span>
+                <span data-role="total-score" style="font-size:10px; opacity:0.7;">(${totalScore}/100)</span>
+              </div>
+              <div style="font-size:10.5px; opacity:0.7; display:flex; align-items:center; gap:2px;">
+                <span>ETE:</span>
+                <input type="number" min="0" max="40" value="${estEte}" data-course-ete="${course.id}" data-mujx="course-ete-input" style="width:38px; padding:1px 3px; font-size:10px; border-radius:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.5); color:#fff; text-align:center;" />
+              </div>
             </div>
-            <div style="font-size:10.5px; opacity:0.7; display:flex; align-items:center; gap:2px;">
-              <span>ETE:</span>
-              <input type="number" min="0" max="40" value="${estEte}" data-course-ete="${course.id}" style="width:38px; padding:1px 3px; font-size:10px; border-radius:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.5); color:#fff; text-align:center;" />
-            </div>
-          </div>
-        `;
+          `;
+
+          const rowEteInput = tdPred.querySelector(`[data-course-ete="${course.id}"]`);
+
+          let eteSaveTimer = null;
+          const saveScoreToStorage = (val, immediate = false) => {
+            try {
+              if (typeof chrome !== "undefined" && chrome.storage?.local) {
+                const codeKey = (course.courseCode || "").toUpperCase();
+                const idKey = (course.id || "").toUpperCase();
+                const nameKey = (course.courseName || "").toUpperCase();
+
+                if (initialEteEstimates) {
+                  if (codeKey) initialEteEstimates[codeKey] = val;
+                  if (idKey) initialEteEstimates[idKey] = val;
+                  if (nameKey) initialEteEstimates[nameKey] = val;
+                  initialEteEstimates[course.id] = val;
+                }
+
+                const commit = () => {
+                  chrome.storage.local.get(["userCustomEteEstimates"], (res) => {
+                    const userEte = res?.userCustomEteEstimates || {};
+                    if (codeKey) userEte[codeKey] = val;
+                    if (idKey) userEte[idKey] = val;
+                    if (nameKey) userEte[nameKey] = val;
+                    userEte[course.id] = val;
+
+                    chrome.storage.local.set({
+                      userCustomEteEstimates: userEte,
+                    });
+                  });
+                };
+
+                if (eteSaveTimer) clearTimeout(eteSaveTimer);
+                if (immediate) {
+                  commit();
+                } else {
+                  eteSaveTimer = setTimeout(commit, 250);
+                }
+              }
+            } catch (_) {}
+          };
+
+          const handleEteInput = (valStr, isFinal) => {
+            if (valStr === "" || valStr === null || valStr === undefined) {
+              if (isFinal) {
+                courseEteEstimates[course.id] = 0;
+                rowEteInput.value = "0";
+                saveScoreToStorage(0, true);
+                render();
+              }
+              return;
+            }
+
+            const val = Number(valStr);
+            if (!Number.isFinite(val) || val < 0) return;
+
+            const clamped = Math.min(val, 40);
+            if (isFinal && clamped !== val) {
+              rowEteInput.value = String(clamped);
+            }
+
+            courseEteEstimates[course.id] = clamped;
+            saveScoreToStorage(clamped, isFinal);
+            render();
+          };
+
+          rowEteInput?.addEventListener("input", (e) => {
+            handleEteInput(e.target.value, false);
+          });
+          rowEteInput?.addEventListener("change", (e) => {
+            handleEteInput(e.target.value, true);
+          });
+          rowEteInput?.addEventListener("blur", (e) => {
+            handleEteInput(e.target.value, true);
+          });
+        }
       }
 
       // Render ETE Calculator Target Button (only for evaluative theory courses)
-      if (predCourse?.isSatisfactory) {
-        tdTarget.innerHTML = `<span style="font-size:10.5px; opacity:0.4;">—</span>`;
-      } else if (course.courseType === "theory") {
-        tdTarget.innerHTML = `
-          <button type="button" class="mujx-ete-target-btn" data-course-id="${course.id}" style="padding:4px 8px; font-size:11px; font-weight:600; border-radius:5px; background:rgba(13,148,136,0.15); border:1px solid rgba(13,148,136,0.4); color:var(--mujx-accent, #2dd4bf); cursor:pointer; white-space:nowrap;">
-            🎯 ETE Target
-          </button>
-        `;
+      if (!tdTarget.hasChildNodes()) {
+        if (predCourse?.isSatisfactory) {
+          tdTarget.innerHTML = `<span style="font-size:10.5px; opacity:0.4;">—</span>`;
+        } else if (course.courseType === "theory") {
+          tdTarget.innerHTML = `
+            <button type="button" class="mujx-ete-target-btn" data-course-id="${course.id}" style="padding:4px 10px; font-size:11px; font-weight:600; border-radius:6px; background:#1e1e2d; border:1px solid #2d2d3f; color:#f1f5f9; box-shadow:0 1px 3px rgba(0,0,0,0.25); cursor:pointer; white-space:nowrap;">
+              ETE Target
+            </button>
+          `;
 
-        const btn = tdTarget.querySelector(`[data-course-id="${course.id}"]`);
-        btn?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openEteTargetPopover({ anchorEl: btn, course });
-        });
-      } else {
-        tdTarget.innerHTML = `<span style="font-size:10.5px; opacity:0.5;">Lab / PBL</span>`;
-      }
-
-      // Row-level ETE input listener
-      const rowEteInput = tdPred.querySelector(`[data-course-ete="${course.id}"]`);
-      rowEteInput?.addEventListener("change", (e) => {
-        const val = Number(e.target.value);
-        if (Number.isFinite(val) && val >= 0) {
-          courseEteEstimates[course.id] = val;
-          render();
+          const btn = tdTarget.querySelector(`[data-course-id="${course.id}"]`);
+          btn?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openEteTargetPopover({ anchorEl: btn, course });
+          });
+        } else {
+          tdTarget.innerHTML = `<span style="font-size:10.5px; opacity:0.5;">Lab / PBL</span>`;
         }
-      });
+      }
     });
   }
 

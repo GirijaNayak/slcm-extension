@@ -62,7 +62,11 @@ async function boot() {
 
   // Listen to local preference / cache changes
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local") remount();
+    if (area === "local") {
+      const keys = Object.keys(changes);
+      const isPrefChange = keys.some((k) => k === "preferences" || k === "theme");
+      if (isPrefChange) remount();
+    }
   });
 
   // Message handler for test commands, manual resets, status checks
@@ -290,6 +294,7 @@ async function mount() {
       cleanups.push(() => marksObserver.disconnect());
 
       const onMarksInteraction = (e) => {
+        if (e.target.closest(`[${INJECT_ATTR}], .mujx-ete-popover`)) return;
         const isInteractive = e.target.closest("button, input[type=submit], input[type=button], select, a, input");
         if (isInteractive) {
           setTimeout(() => enhanceMarksTableInline(marks, prefs), 100);
