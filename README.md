@@ -1,99 +1,131 @@
-# MUJX — MUJ SLCM Enhanced
+# MUJ SLCM Enhanced (MUJX)
 
-A premium, non-destructive Manifest V3 Chrome Extension that **enhances the Manipal University Jaipur (MUJ) SLCM portal in place**.
+[![Manifest V3](https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
+[![Node Version](https://img.shields.io/badge/Node-%3E%3D20.0.0-green?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Tests](https://img.shields.io/badge/Tests-96%20Passing-success?logo=githubactions&logoColor=white)]()
+[![Privacy](https://img.shields.io/badge/Security-Zero%20Telemetry-informational?logo=shield&logoColor=white)]()
 
-The extension operates directly inside the existing SLCM interface without replacing, cloning, or damaging the original website. Disabling or uninstalling the extension cleanly removes all injected elements (`mujx-` / `data-mujx`) and leaves the portal completely untouched.
-
----
-
-## Highlights & Features
-
-| Feature | In-Place Enhancement | Contextual Overlay & Non-Destructive Guarantee |
-| :--- | :--- | :--- |
-| **A. Attendance Intelligence** | Injected `MUJX Intel` column with real-time safe skips, classes needed for recovery, status chips, multi-mode what-if simulation, and theory/lab split. | **Anchored Popovers**: Click any safe skips badge or recovery badge to inspect the exact formula breakdown, substituted parameters, and interactive future forecast without obscuring the table. |
-| **B. Marks & SGPA Predictor** | Subject summaries, institutional MTE/CWS/ETE weighting, what-if marks, required ETE score calculator for target grades, credit-weighted SGPA estimation. | **Anchored Popovers**: Click to inspect evaluation scheme assumptions and required ETE scores. Kept strictly distinct from official marks. |
-| **C. CGPA Predictor** | Independent multi-semester forward projection, dual scenario comparisons (Scenario A vs B), interactive SVG progression curves with tooltips. | Uses the official credit-weighted CGPA identity from the authoritative MUJ calculation certificate rather than simple GPA averaging. |
-| **D. Target CGPA Planner** | Distinct goal-oriented planner calculating required average SGPA, feasibility badges (Feasible / High Effort / Impossible), max achievable CGPA, semester credit allocation. | Strictly accounts for remaining credits and institutional grade caps (10.0). |
-| **E. Timetable Enhancements** | Live class indicator with pulsing marker, upcoming class countdown & room, break/gap analysis, schedule conflict detection, timetable snapshot change tracking. | **Anchored Popovers**: Click any calendar event to view class venue, start/end times, and linked course attendance. Calendar drag and navigation stay intact. |
-| **F. Academic Notifications** | Low-attendance alerts, borderline notices, timetable change alerts, marks update alerts, dismissible list, local history. | 100% browser-local; deduplicated and persistent dismissal in `chrome.storage.local`. |
-| **G. Home Glance Card** | Executive "Today at a Glance" card on the SLCM dashboard summarizing attendance health, upcoming classes, and quick portal links. | Preserves all official university notices and home dashboard widgets without pushing content down. |
-| **H. Universal Floating Hub** | Floating MUJX button at bottom-right opening a tabbed intelligence drawer on any authenticated SLCM page. | Keyboard navigable (`Enter`/`Space` to toggle, `Escape` to close), accessible ARIA support, remembers minimized state. |
+A high-performance, non-destructive enterprise Chrome extension that enhances the **Manipal University Jaipur (MUJ) SLCM Portal** in place. It injects real-time attendance analytics, credit-weighted provisional grade prediction, target CGPA planning, and schedule tracking directly into the portal without modifying core SLCM backend states or destroying native DOM layouts.
 
 ---
 
-## Authoritative GPA / CGPA Calculation Verification
+## Key Capabilities
 
-Verified against the official **MUJ Certificate of GPA and CGPA Calculation Process** (`Certificate-of-GPA-And-CGPA-Calculation-Process.pdf`):
-
-- **Course-level GPA**:
-  $$\text{GPA} = \frac{\sum_{i=1}^n (C_i \cdot G_i)}{\sum_{i=1}^n C_i}$$
-  *Certificate Example*: 8 courses, 25 credits, total grade points 212 $\implies \text{GPA} = 8.48$.
-- **Cumulative CGPA**:
-  $$\text{CGPA} = \frac{\sum_{j=1}^N (\text{GPA}_j \cdot C_j)}{\sum_{j=1}^N C_j}$$
-  *Certificate Example*: 4 semesters (GPAs 8.48, 8.62, 8.24, 8.42 over credits 25, 25, 26, 26) $\implies \text{Total Credits} = 102$, $\text{CGPA} = 8.44$.
-- **Regression Tested**: Automated test suite explicitly validates both the course-level 8.48 GPA and the 8.44 cumulative CGPA regression cases.
+- **Attendance Intelligence**: Computes safe skips, classes needed for target attendance (75%), multi-scenario what-if simulations, and theory/lab splits via anchored popovers.
+- **Marks & Provisional SGPA Forecasting**: Predicts provisional course grades and credit-weighted SGPA using live internal marks and configurable End Term Exam (ETE) targets.
+- **Official Institutional Grading Support**: Automatically classifies Theory, Lab, Project-Based Learning (PBL), and Satisfactory/Unsatisfactory (S/U) courses. Correctly excludes non-graded subjects from the GPA divisor.
+- **Target CGPA Planner**: Reverse-calculates required future SGPA and per-course milestones based on official university credit weightings and grade boundaries.
+- **Timetable & Schedule Operations**: Highlights active classes, upcoming countdowns, room locations, and break intervals with conflict detection.
+- **Persistent Preferences**: Remembers user-adjusted credits, target scores, and ETE estimates locally across page refreshes via `chrome.storage.local`.
 
 ---
 
-## Installation Instructions (Load Unpacked)
+## Architecture & Design Principles
 
-1. **Clone or Download** this directory to your machine:
-   ```bash
-   cd C:\Users\girijanayak\muj-sclm-enhanced
-   ```
-2. **Build the Content Script Bundle**:
-   ```bash
-   npm run build
-   ```
-   *(A pre-built `dist/content.bundle.js` is included so the extension is ready to load immediately!)*
-3. **Run Unit Tests**:
-   ```bash
-   npm test
-   ```
-4. **Open Chrome Extensions Page**:
-   - Navigate to `chrome://extensions` in Google Chrome.
-   - Enable **Developer mode** toggle in the top-right corner.
-5. **Load the Extension**:
-   - Click the **Load unpacked** button.
-   - Select the `muj-sclm-enhanced` directory.
-6. **Sign In to SLCM**:
-   - Navigate to [https://mujslcm.jaipur.manipal.edu](https://mujslcm.jaipur.manipal.edu) and log in with your student credentials.
-   - Open Attendance, Marks, Grades, Timetable, or Home to view the live enhancements!
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                      MUJ SLCM Portal                        │
+│            (mujslcm.jaipur.manipal.edu)                     │
+└──────────────┬───────────────────────────────┬──────────────┘
+               ▼                               ▼
+    ┌─────────────────────┐         ┌─────────────────────┐
+    │ Native Portal DOM   │         │ Background Services │
+    │ (Untouched Context) │         │ (Session & Storage) │
+    └──────────┬──────────┘         └──────────┬──────────┘
+               │                               │
+               ▼                               ▼
+    ┌─────────────────────────────────────────────────────────┐
+    │              MUJX Content Script Bundles                │
+    │  • dist/marks.bundle.js   • dist/grades.bundle.js       │
+    │  • dist/content.bundle.js • src/content/timetable.js    │
+    ├─────────────────────────────────────────────────────────┤
+    │  • In-Place Non-Destructive DOM Hydration               │
+    │  • Deterministic Calculation Engines (SGPA / Skips)     │
+    │  • Local State Management (chrome.storage.local)        │
+    └─────────────────────────────────────────────────────────┘
+```
 
----
-
-## Development & Test Commands
-
-- **Build content bundle**:
-  ```bash
-  npm run build
-  ```
-- **Build with auto-rebuild on change**:
-  ```bash
-  npm run build:watch
-  ```
-- **Run automated test suite (49 tests)**:
-  ```bash
-  npm test
-  ```
-- **Run tests in watch mode**:
-  ```bash
-  npm run test:watch
-  ```
+1. **Non-Destructive In-Place Hydration**: Extension elements use isolated attributes (`data-mujx`) and CSS namespaces. Disabling or uninstalling cleanly restores the stock SLCM interface.
+2. **Zero Telemetry / Privacy First**: 100% client-side execution. Academic records, attendance figures, and calculations never leave the user's browser.
+3. **Rigorous Verification**: Math models adhere to the official *MUJ Certificate of GPA and CGPA Calculation Process* and university grading handbooks.
 
 ---
 
-## Privacy, Security & Data Handling
+## Directory Structure
 
-- **Narrow Host Permissions**: Scoped strictly to `https://mujslcm.jaipur.manipal.edu/*` and `https://muj.slcm.jaipur.manipal.edu/*`.
-- **Zero External Transmissions**: Academic data, attendance figures, and calculated grades remain 100% inside your browser session. No data is ever transmitted to an external server.
-- **Session Respect**: Uses your existing browser cookies (`credentials: "include"`). Never requests, reads, or stores your password, session IDs, or anti-forgery tokens.
-- **Local Cache**: Preferences and snapshot fingerprints are stored in `chrome.storage.local` and can be cleared at any time via the extension popup or hub settings.
+```text
+muj-sclm-enhanced/
+├── dist/                     # Production bundles (esbuild)
+│   ├── content.bundle.js     # Global portal lifecycle bundle
+│   ├── grades.bundle.js      # Grade sheet intelligence bundle
+│   └── marks.bundle.js       # Internal marks & prediction bundle
+├── docs/                     # Technical specifications & calculation rules
+├── src/
+│   ├── background/           # Service worker & extension lifecycle
+│   ├── calculations/         # Core deterministic math models (SGPA, skips, ETE)
+│   ├── content/              # Content scripts & route bootstrap observers
+│   ├── data/                 # Adapters & DOM parsers for SLCM tables
+│   ├── shared/               # Shared constants, DOM utilities, and themes
+│   └── ui/                   # Modular components, floating hub, and styles
+├── tests/                    # Automated Node test runner suites (96 tests)
+├── manifest.json             # Chromium Manifest V3 extension configuration
+└── package.json              # Build scripts and project dependencies
+```
 
 ---
 
-## Documentation
+## Getting Started
 
-- [docs/DATA_ACCESS.md](docs/DATA_ACCESS.md): Verified network endpoints, session handling, and candidate route documentation.
-- [docs/GRADING_RULES.md](docs/GRADING_RULES.md): Official MUJ Examination Handbook 2023-24 grading rules, letter grade points, and formulas.
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md): Complete automated test breakdown (49 tests), live endpoint results, and manual integration checklist.
+### Prerequisites
+- Google Chrome, Brave, Edge, or any Chromium-based browser (v110+)
+- [Node.js](https://nodejs.org/) `>= 20.0.0`
+- `npm` `>= 9.0.0`
+
+### 1. Build Production Bundles
+```bash
+# Clone the repository
+git clone https://github.com/your-org/muj-sclm-enhanced.git
+cd muj-sclm-enhanced
+
+# Install development dependencies
+npm install
+
+# Compile content bundles via esbuild
+npm run build
+```
+
+### 2. Load Extension in Chromium Browser
+1. Open Chrome and navigate to `chrome://extensions`.
+2. Toggle **Developer mode** on in the top-right corner.
+3. Click **Load unpacked** in the top-left toolbar.
+4. Select the `muj-sclm-enhanced` root folder.
+5. Log into [MUJ SLCM](https://mujslcm.jaipur.manipal.edu) to verify features.
+
+---
+
+## Development & Testing
+
+```bash
+# Run the complete test suite (96 automated test cases)
+npm test
+
+# Run tests in continuous watch mode
+npm run test:watch
+
+# Compile content bundles in watch mode
+npm run build:watch
+```
+
+---
+
+## Security & Compliance
+
+- **Least Privilege Access**: Host permissions are strictly restricted to `*://mujslcm.jaipur.manipal.edu/*` and `*://muj.slcm.jaipur.manipal.edu/*`.
+- **Credential Safety**: Respects existing authenticated sessions (`credentials: "include"`). Passwords, tokens, and captcha responses are neither captured nor stored.
+- **Auditable Math Engines**: All formulas (SGPA, attendance bounds, required ETE) are decoupled into unit-tested pure functions under `src/calculations/`.
+
+---
+
+## License
+
+This project is proprietary and intended for student and academic use at Manipal University Jaipur.
