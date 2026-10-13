@@ -1,5 +1,5 @@
 import { BOOT_FLAG, INJECT_ATTR, PAGE_KINDS, STORAGE_KEYS } from "../shared/constants.js";
-import { detectPage } from "./page-detector.js";
+import { detectPage, isLoginPage } from "./page-detector.js";
 import { applyTheme, createOverlay, injectColumn, teardownAll } from "./overlay-manager.js";
 import { observePath, observeTable } from "./observers.js";
 import { loadPreferences, savePreferences } from "../storage/preferences.js";
@@ -14,7 +14,11 @@ import {
   saveTimetableSnapshot,
 } from "../storage/cache.js";
 import { extractAttendanceFromDocument } from "../data/attendance-adapter.js";
-import { extractMarksFromDocument } from "../data/marks-adapter.js";
+import { enhanceAttendanceTable, mountAttendanceSummaryFeature } from "../ui/components/attendance/attendance-intelligence.js";
+import { mountAcademicDashboard } from "../ui/components/dashboard/dashboard.js";
+import { enhanceTimetablePage } from "../ui/components/timetable/timetable-intelligence.js";
+import { extractMarksFromDocument, parseInternalMarksSummaryTable } from "../data/marks-adapter.js";
+import { enhanceInternalMarksPage } from "../ui/components/marks/prediction-panel.js";
 import { extractSemesterContext } from "../data/semester-adapter.js";
 import { extractTimetableFromDocument } from "../data/timetable-adapter.js";
 import { parseCgpaSummaryTable, parseGradesTable } from "../data/grades-adapter.js";
@@ -30,6 +34,7 @@ import { renderCgpaPredictor } from "../ui/components/cgpa-predictor/panel.js";
 import { renderTargetPlanner } from "../ui/components/target-cgpa-planner/panel.js";
 import { renderTimetablePanel } from "../ui/components/timetable/panel.js";
 import { buildAcademicAlerts, renderNotifications } from "../ui/components/notifications/panel.js";
+import { syncThemeAttribute, watchThemeChanges } from "../shared/theme.js";
 import { logError, logInfo } from "../shared/logger.js";
 
 const cleanups = [];
@@ -37,6 +42,20 @@ let activeFloatingTab = "alerts";
 
 async function boot() {
   if (window[BOOT_FLAG]) return;
+
+  // STRICT GUARD: If on login page, DO NOT RUN ANY EXTENSION CODE AT ALL!
+  // Leave the login page 100% untouched so the user can log in without interference.
+  if (isLoginPage(document, location.href)) {
+    logInfo("login page detected, bypassing extension");
+    const unobserve = observePath(() => {
+      if (!isLoginPage(document, location.href)) {
+        unobserve();
+        boot();
+      }
+    });
+    return;
+  }
+
   window[BOOT_FLAG] = true;
   await mount();
   cleanups.push(observePath(() => remount()));
@@ -68,12 +87,21 @@ async function remount() {
 
 async function mount() {
   try {
+    // Skip login pages entirely
+    if (isLoginPage(document, location.href)) {
+      logInfo("skipping login page in mount");
+      return;
+    }
+
     const prefs = await loadPreferences();
     const page = detectPage();
     logInfo("page detected", { kind: page.kind, reason: page.reason });
 
-    // Skip login pages entirely
     if (page.kind === PAGE_KINDS.login) return;
+
+    // Dynamically synchronize theme with website (dark mode / light mode)
+    syncThemeAttribute(document.documentElement);
+    cleanups.push(watchThemeChanges(() => syncThemeAttribute(document.documentElement)));
 
     const cache = await loadCache();
     const seed = extractSemesterContext();
@@ -124,50 +152,89 @@ async function mount() {
       return false;
     };
 
+    const hasMarksTableInDOM = () => {
+      const tables = document.querySelectorAll("table");
+      for (const t of tables) {
+        const text = (t.textContent || "").toLowerCase();
+        if ((text.includes("mte") || text.includes("cws") || text.includes("prs") || text.includes("internal mark")) && (text.includes("course") || text.includes("subject"))) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const isGradesPage =
       page.kind === PAGE_KINDS.grades ||
       location.pathname.toLowerCase().includes("grade") ||
       location.pathname.toLowerCase().includes("cgpaga") ||
       location.pathname.toLowerCase().includes("examination") ||
       hasGradeTableInDOM();
-    const isMarksPage = page.kind === PAGE_KINDS.marks;
 
-    // 1. INLINE ENHANCEMENT: Attendance Tables (both Attendance page AND Dashboard)
-    // Directly injects the "MUJX Intel" column into the website's table. Zero overlays.
+    const isMarksPage =
+      page.kind === PAGE_KINDS.marks ||
+      location.pathname.toLowerCase().includes("mark") ||
+      location.pathname.toLowerCase().includes("internalmark") ||
+      hasMarksTableInDOM();
+
+    const isHomePage =
+      page.kind === PAGE_KINDS.home ||
+      location.pathname.toLowerCase().includes("dashboard") ||
+      Boolean(document.getElementById("kt_ViewEvent"));
+
+    const isTimetablePage =
+      page.kind === PAGE_KINDS.timetable ||
+      location.pathname.toLowerCase().includes("timetable") ||
+      Boolean(document.getElementById("calendar"));
+
+    const isAttendancePage =
+      page.kind === PAGE_KINDS.attendance ||
+      location.pathname.toLowerCase().includes("attendance");
+
+    // 0. ACADEMIC DASHBOARD: Homepage "Today at a Glance"
+    if (prefs.features.homePanel && isHomePage) {
+      const dashCleanup = await mountAcademicDashboard({ container: document.body, prefs });
+      cleanups.push(dashCleanup);
+    }
+
+    // 1. INLINE ENHANCEMENT: Attendance Tables
+    // On Attendance page: injects Classes Needed, Safe Skips, Target control bar & summary strip.
     // Strictly guard so attendance is NEVER injected on grades or marks pages.
-    if (
-      prefs.features.attendance &&
-      !isGradesPage &&
-      !isMarksPage &&
-      attendance.available &&
-      attendance.table
-    ) {
-      const cleanup = injectColumn(attendance.table, {
-        key: "attendance-intel",
-        title: "MUJX Intel",
-        render: (td, row) => {
-          const cells = [...row.cells].map((cell) => cell.textContent);
-          const record = attendance.records.find((item) => cells.join(" ").includes(item.subject)) || {
-            subject: cells[1] || cells[0],
-            present: parseNumber(cells[cells.length - 3]),
-            total: parseNumber(cells[cells.length - 2]),
-          };
-          renderAttendanceCell(td, record, prefs.attendanceThreshold, prefs.borderlineBand);
-        },
-      });
-      cleanups.push(cleanup);
+    if (prefs.features.attendance && !isGradesPage && !isMarksPage) {
+      if (isAttendancePage || document.getElementById("kt_ViewTable")) {
+        const attCleanup = mountAttendanceSummaryFeature(prefs);
+        cleanups.push(attCleanup);
+      } else if (attendance.available && attendance.table) {
+        const cleanup = injectColumn(attendance.table, {
+          key: "attendance-intel",
+          title: "MUJX Intel",
+          render: (td, row) => {
+            const cells = [...row.cells].map((cell) => cell.textContent);
+            const record = attendance.records.find((item) => cells.join(" ").includes(item.subject)) || {
+              subject: cells[1] || cells[0],
+              present: parseNumber(cells[cells.length - 3]),
+              total: parseNumber(cells[cells.length - 2]),
+            };
+            renderAttendanceCell(td, record, prefs.attendanceThreshold, prefs.borderlineBand);
+          },
+        });
+        cleanups.push(cleanup);
+      }
 
-      cleanups.push(
-        observeTable(attendance.table, () => {
-          attendance = extractAttendanceFromDocument();
-          remount();
-        }),
-      );
+      if (attendance.available && attendance.table) {
+        cleanups.push(
+          observeTable(attendance.table, () => {
+            attendance = extractAttendanceFromDocument();
+            remount();
+          }),
+        );
+      }
 
-      const enhanced = attendance.records.map((r) =>
-        enhanceRecord(r, prefs.attendanceThreshold, prefs.borderlineBand),
-      );
-      await recordAlertsIfAny(enhanced, snapshotChanged, marksChanged);
+      if (attendance.records?.length) {
+        const enhanced = attendance.records.map((r) =>
+          enhanceRecord(r, prefs.attendanceThreshold, prefs.borderlineBand),
+        );
+        await recordAlertsIfAny(enhanced, snapshotChanged, marksChanged);
+      }
     }
 
     // 2. INLINE ENHANCEMENT: CGPA & Grade Sheet Tables (/Student/Academic/GradesForStudent & CGPAGPAForStudent)
@@ -208,11 +275,45 @@ async function mount() {
     // 3. INLINE ENHANCEMENT: Internal Marks Table
     if (prefs.features.marks && isMarksPage) {
       enhanceMarksTableInline(marks, prefs);
+
+      // Continuous DOM observation for dynamic AJAX / postback tables on marks pages
+      const marksObserver = new MutationObserver((mutations) => {
+        const hasExternalChanges = mutations.some((m) => {
+          const target = m.target;
+          return !(target?.hasAttribute?.(INJECT_ATTR) || target?.closest?.(`[${INJECT_ATTR}]`));
+        });
+        if (hasExternalChanges) {
+          enhanceMarksTableInline(marks, prefs);
+        }
+      });
+      marksObserver.observe(document.body, { childList: true, subtree: true });
+      cleanups.push(() => marksObserver.disconnect());
+
+      const onMarksInteraction = (e) => {
+        const isInteractive = e.target.closest("button, input[type=submit], input[type=button], select, a, input");
+        if (isInteractive) {
+          setTimeout(() => enhanceMarksTableInline(marks, prefs), 100);
+          setTimeout(() => enhanceMarksTableInline(marks, prefs), 350);
+          setTimeout(() => enhanceMarksTableInline(marks, prefs), 800);
+          setTimeout(() => enhanceMarksTableInline(marks, prefs), 1600);
+        }
+      };
+      document.addEventListener("click", onMarksInteraction, true);
+      document.addEventListener("change", onMarksInteraction, true);
+      cleanups.push(() => {
+        document.removeEventListener("click", onMarksInteraction, true);
+        document.removeEventListener("change", onMarksInteraction, true);
+      });
     }
 
-    // 4. INLINE ENHANCEMENT: Timetable (highlight active class slot in place)
+    // 4. INLINE ENHANCEMENT: Timetable Intelligence
     if (prefs.features.timetable) {
-      highlightActiveTimetableSlot(timetable.events);
+      if (isTimetablePage) {
+        const ttCleanup = enhanceTimetablePage({ prefs });
+        cleanups.push(ttCleanup);
+      } else {
+        highlightActiveTimetableSlot(timetable.events);
+      }
     }
 
     // 5. Universal Floating MUJX Hub (small unobtrusive pill in bottom-right corner only, closed by default)
@@ -317,11 +418,56 @@ function enhanceGradesInline(prefs) {
  * Enhances internal marks tables directly in place without any overlay.
  */
 function enhanceMarksTableInline(marks, prefs) {
-  if (!marks.available) return;
-  const tables = document.querySelectorAll("table");
-  for (const table of tables) {
+  const allTables = [
+    ...document.querySelectorAll("table"),
+    ...[...document.querySelectorAll("iframe")].flatMap((f) => {
+      try {
+        return [...(f.contentDocument?.querySelectorAll("table") || [])];
+      } catch {
+        return [];
+      }
+    }),
+  ];
+
+  for (const table of allTables) {
     const text = (table.textContent || "").toLowerCase();
+
+    // 1. Course-wise internal marks summary table (/Student/Academic/InternalMarkForStudent)
+    const summary = parseInternalMarksSummaryTable(table);
+    if (summary.available && summary.courses.length) {
+      const dataSig = summary.courses
+        .map((c) => `${c.id}:${c.internalSubtotal}:${c.mte}:${c.cws}:${c.prs}:${c.credits}`)
+        .join(";");
+
+      if (
+        table.getAttribute("data-mujx-marks-sig") === dataSig &&
+        table.querySelector(`[${INJECT_ATTR}="marks-pred-col"]`)
+      ) {
+        continue;
+      }
+
+      // Clean previous injections if dataset changed
+      table.querySelectorAll(`[${INJECT_ATTR}]`).forEach((el) => el.remove());
+      table.closest(".table-responsive, .table-scrollable")?.parentNode?.querySelectorAll?.(`[${INJECT_ATTR}="marks-banner"]`)?.forEach((el) => el.remove());
+      table.parentNode?.querySelectorAll?.(`[${INJECT_ATTR}="marks-banner"]`)?.forEach((el) => el.remove());
+      document.querySelectorAll(`[${INJECT_ATTR}="marks-banner"]`).forEach((el) => el.remove());
+
+      table.setAttribute("data-mujx-marks-sig", dataSig);
+
+      const cleanup = enhanceInternalMarksPage({
+        table,
+        courses: summary.courses,
+        headerRow: summary.headerRow,
+        allRows: summary.allRows,
+        headerRowIndex: summary.headerRowIndex,
+      });
+      cleanups.push(cleanup);
+      continue;
+    }
+
+    // 2. Component-wise assessment marks table (fallback)
     if (text.includes("mark") || text.includes("component") || text.includes("obtained")) {
+      if (table.querySelector(`[${INJECT_ATTR}="marks-weight-intel"]`)) continue;
       const cleanup = injectColumn(table, {
         key: "marks-weight-intel",
         title: "Weightage & Target",

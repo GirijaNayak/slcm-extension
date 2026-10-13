@@ -1,5 +1,6 @@
 import { HOST_ROOT_ATTR, INJECT_ATTR, NS } from "../shared/constants.js";
 import { teardownPopovers } from "../ui/popover.js";
+import { detectIsDarkMode } from "../shared/theme.js";
 
 const hosts = new Set();
 const injected = new Set();
@@ -24,7 +25,9 @@ export function createOverlay({ id, placement = "float" }) {
   link.href = chrome.runtime.getURL("src/ui/styles.css");
   const wrap = document.createElement("div");
   wrap.className = "mujx-root";
-  wrap.setAttribute("data-theme", "auto");
+  const isDark = detectIsDarkMode();
+  wrap.setAttribute("data-theme", isDark ? "dark" : "light");
+  wrap.setAttribute("data-mujx-theme", isDark ? "dark" : "light");
   shadow.append(link, wrap);
   place(host, placement);
   hosts.add(host);
@@ -33,7 +36,10 @@ export function createOverlay({ id, placement = "float" }) {
 }
 
 export function applyTheme(wrap, theme) {
-  wrap?.setAttribute?.("data-theme", theme || "auto");
+  const isDark = theme === "dark" || (theme !== "light" && detectIsDarkMode());
+  const applied = isDark ? "dark" : "light";
+  wrap?.setAttribute?.("data-theme", applied);
+  wrap?.setAttribute?.("data-mujx-theme", applied);
 }
 
 export function injectColumn(table, { key, title, render }) {

@@ -43,6 +43,43 @@
   --mujx-shadow-elevated: 0 20px 30px -10px rgba(15, 23, 42, 0.16), 0 8px 12px -4px rgba(15, 23, 42, 0.08);
   --mujx-focus: 0 0 0 3px rgba(13, 148, 136, 0.25);
   
+  /* Dashboard & Timetable tokens */
+  --mf-bg-card: #f8f9fa;
+  --mf-border-card: rgba(0, 0, 0, 0.06);
+  --mf-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --mf-title-color: #333333;
+  --mf-time-color: #7a8190;
+  --mf-status-color: #64748b;
+  --mf-nav-bg: #f3f6f9;
+  --mf-nav-btn: #555555;
+  --mf-nav-btn-hover: #e4e8ee;
+  --mf-date-color: #333333;
+  --mf-head-color: #464457;
+  --mf-head-border: #ebedf2;
+  --mf-table-head-bg: #f3f6f9;
+  --mf-table-th-color: #464457;
+  --mf-table-td-color: #212529;
+  --mf-table-border: #ebedf2;
+  --mf-table-striped: rgba(0, 0, 0, 0.02);
+  --mf-table-hover: rgba(0, 0, 0, 0.04);
+  --mf-switch-label: #475569;
+  --mf-track-bg: #cbd5e1;
+  --mf-banner-bg: #fff1f2;
+  --mf-banner-border: #fecdd3;
+  --mf-banner-color: #b42318;
+  --mf-pill-ok-bg: #e6f6ec;
+  --mf-pill-ok-color: #166534;
+  --mf-pill-warn-bg: #fff4d6;
+  --mf-pill-warn-color: #92600a;
+  --mf-pill-bad-bg: #fde8e8;
+  --mf-pill-bad-color: #b42318;
+  --mf-notice-info-bg: #e8f4fd;
+  --mf-notice-info-color: #0d8abc;
+  --mf-notice-sec-bg: #f1f5f9;
+  --mf-notice-sec-color: #64748b;
+  --mf-notice-danger-bg: #fde8e8;
+  --mf-notice-danger-color: #b42318;
+
   color: var(--mujx-ink);
   font-family: var(--mujx-font);
   font-size: 13.5px;
@@ -51,7 +88,7 @@
 }
 
 /* Dark Theme */
-.mujx-root[data-theme="dark"], [data-mujx-root][data-theme="dark"] {
+.mujx-root[data-theme="dark"], [data-mujx-root][data-theme="dark"], [data-theme="dark"], [data-mujx-theme="dark"], html.dark, body.dark, html[data-darkreader-mode], body[data-darkreader-mode], html[data-color-scheme="dark"], .theme-dark, .dark-mode, .dark-theme, .slcm-dark {
   --mujx-bg: #090d16;
   --mujx-surface: #111827;
   --mujx-surface-elevated: #1f2937;
@@ -77,10 +114,46 @@
   --mujx-info-border: #1d4ed8;
   --mujx-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
   --mujx-shadow-elevated: 0 20px 35px -5px rgba(0, 0, 0, 0.65);
+
+  --mf-bg-card: rgba(255, 255, 255, 0.05) !important;
+  --mf-border-card: rgba(255, 255, 255, 0.08) !important;
+  --mf-shadow-card: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+  --mf-title-color: #f1f5f9 !important;
+  --mf-time-color: #94a3b8 !important;
+  --mf-status-color: #94a3b8 !important;
+  --mf-nav-bg: rgba(255, 255, 255, 0.06) !important;
+  --mf-nav-btn: #cbd5e1 !important;
+  --mf-nav-btn-hover: rgba(255, 255, 255, 0.12) !important;
+  --mf-date-color: #f1f5f9 !important;
+  --mf-head-color: #f1f5f9 !important;
+  --mf-head-border: rgba(255, 255, 255, 0.1) !important;
+  --mf-table-head-bg: rgba(255, 255, 255, 0.06) !important;
+  --mf-table-th-color: #e2e8f0 !important;
+  --mf-table-td-color: #cbd5e1 !important;
+  --mf-table-border: rgba(255, 255, 255, 0.08) !important;
+  --mf-table-striped: rgba(255, 255, 255, 0.02) !important;
+  --mf-table-hover: rgba(255, 255, 255, 0.04) !important;
+  --mf-switch-label: #cbd5e1 !important;
+  --mf-track-bg: #475569 !important;
+  --mf-banner-bg: rgba(225, 29, 72, 0.15) !important;
+  --mf-banner-border: rgba(225, 29, 72, 0.35) !important;
+  --mf-banner-color: #fb7185 !important;
+  --mf-pill-ok-bg: rgba(16, 185, 129, 0.18) !important;
+  --mf-pill-ok-color: #34d399 !important;
+  --mf-pill-warn-bg: rgba(245, 158, 11, 0.18) !important;
+  --mf-pill-warn-color: #fbbf24 !important;
+  --mf-pill-bad-bg: rgba(244, 63, 94, 0.18) !important;
+  --mf-pill-bad-color: #fb7185 !important;
+  --mf-notice-info-bg: rgba(37, 99, 235, 0.16) !important;
+  --mf-notice-info-color: #60a5fa !important;
+  --mf-notice-sec-bg: rgba(255, 255, 255, 0.05) !important;
+  --mf-notice-sec-color: #94a3b8 !important;
+  --mf-notice-danger-bg: rgba(225, 29, 72, 0.16) !important;
+  --mf-notice-danger-color: #fb7185 !important;
 }
 
 @media (prefers-color-scheme: dark) {
-  .mujx-root[data-theme="auto"], [data-mujx-root][data-theme="auto"] {
+  :root, .mujx-root[data-theme="auto"], [data-mujx-root][data-theme="auto"] {
     --mujx-bg: #090d16;
     --mujx-surface: #111827;
     --mujx-surface-elevated: #1f2937;
@@ -106,6 +179,42 @@
     --mujx-info-border: #1d4ed8;
     --mujx-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
     --mujx-shadow-elevated: 0 20px 35px -5px rgba(0, 0, 0, 0.65);
+
+    --mf-bg-card: rgba(255, 255, 255, 0.05);
+    --mf-border-card: rgba(255, 255, 255, 0.08);
+    --mf-shadow-card: 0 1px 4px rgba(0, 0, 0, 0.35);
+    --mf-title-color: #f1f5f9;
+    --mf-time-color: #94a3b8;
+    --mf-status-color: #94a3b8;
+    --mf-nav-bg: rgba(255, 255, 255, 0.06);
+    --mf-nav-btn: #cbd5e1;
+    --mf-nav-btn-hover: rgba(255, 255, 255, 0.12);
+    --mf-date-color: #f1f5f9;
+    --mf-head-color: #f1f5f9;
+    --mf-head-border: rgba(255, 255, 255, 0.1);
+    --mf-table-head-bg: rgba(255, 255, 255, 0.06);
+    --mf-table-th-color: #e2e8f0;
+    --mf-table-td-color: #cbd5e1;
+    --mf-table-border: rgba(255, 255, 255, 0.08);
+    --mf-table-striped: rgba(255, 255, 255, 0.02);
+    --mf-table-hover: rgba(255, 255, 255, 0.04);
+    --mf-switch-label: #cbd5e1;
+    --mf-track-bg: #475569;
+    --mf-banner-bg: rgba(225, 29, 72, 0.15);
+    --mf-banner-border: rgba(225, 29, 72, 0.35);
+    --mf-banner-color: #fb7185;
+    --mf-pill-ok-bg: rgba(16, 185, 129, 0.18);
+    --mf-pill-ok-color: #34d399;
+    --mf-pill-warn-bg: rgba(245, 158, 11, 0.18);
+    --mf-pill-warn-color: #fbbf24;
+    --mf-pill-bad-bg: rgba(244, 63, 94, 0.18);
+    --mf-pill-bad-color: #fb7185;
+    --mf-notice-info-bg: rgba(37, 99, 235, 0.16);
+    --mf-notice-info-color: #60a5fa;
+    --mf-notice-sec-bg: rgba(255, 255, 255, 0.05);
+    --mf-notice-sec-color: #94a3b8;
+    --mf-notice-danger-bg: rgba(225, 29, 72, 0.16);
+    --mf-notice-danger-color: #fb7185;
   }
 }
 
@@ -128,6 +237,44 @@
 
 .mujx-card:hover {
   border-color: var(--mujx-line-strong);
+}
+
+/* Dashboard timetable card spacing and adaptive theme matching */
+#mujx-timetable .mf-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+#mujx-timetable .mf-card {
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  background: var(--mf-bg-card, rgba(255, 255, 255, 0.05)) !important;
+  color: var(--mf-title-color, #f1f5f9) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--mf-shadow-card, 0 1px 3px rgba(0, 0, 0, 0.2)) !important;
+  min-height: 42px !important;
+  border: 1px solid var(--mf-border-card, rgba(255, 255, 255, 0.08)) !important;
+  border-left: 4px solid var(--c) !important;
+  box-sizing: border-box !important;
+}
+#mujx-timetable .mf-time {
+  font-size: 0.75em !important;
+  color: var(--mf-time-color, #94a3b8) !important;
+  margin-bottom: 2px !important;
+  font-variant-numeric: tabular-nums !important;
+}
+#mujx-timetable .mf-title {
+  font-weight: 500 !important;
+  font-size: 0.9em !important;
+  margin-bottom: 6px !important;
+  color: var(--mf-title-color, #f1f5f9) !important;
+  line-height: 1.3 !important;
+}
+#mujx-timetable .mf-status {
+  font-size: 0.85em !important;
+  color: var(--mf-status-color, #94a3b8) !important;
 }
 
 /* Card Header */

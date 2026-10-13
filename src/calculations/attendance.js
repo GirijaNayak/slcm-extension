@@ -134,3 +134,43 @@ export function enhanceRecord(record, thresholdPercent, borderlineBand = 5) {
     issues: [...new Set([...(percent.issues || []), ...(skips.issues || []), ...(needed.issues || [])])],
   };
 }
+
+export function calculateOverallAttendance(records = [], thresholdPercent = 75) {
+  let sumPresent = 0;
+  let sumTotal = 0;
+  let meeting = 0;
+  let below = 0;
+  let totalSafeSkips = 0;
+
+  for (const r of records) {
+    const p = Number(r.present);
+    const n = Number(r.total);
+    if (!Number.isFinite(p) || !Number.isFinite(n) || n <= 0) continue;
+    sumPresent += p;
+    sumTotal += n;
+
+    const pct = (p / n) * 100;
+    if (pct >= thresholdPercent) {
+      meeting++;
+      const skips = safeSkips(p, n, thresholdPercent);
+      if (skips.ok && skips.skips > 0) {
+        totalSafeSkips += skips.skips;
+      }
+    } else {
+      below++;
+    }
+  }
+
+  const overall = attendancePercent(sumPresent, sumTotal);
+  return {
+    sumPresent,
+    sumTotal,
+    overallPercent: overall.percent,
+    coursesCount: meeting + below,
+    coursesMeeting: meeting,
+    coursesBelow: below,
+    totalSafeSkips,
+    allMeeting: below === 0 && meeting > 0,
+  };
+}
+

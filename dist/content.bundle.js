@@ -70,37 +70,62 @@
   });
 
   // src/content/page-detector.js
+  function isLoginPage(doc = document, href = location.href) {
+    if (!doc) return false;
+    let path = "";
+    try {
+      path = new URL(href).pathname.toLowerCase();
+    } catch {
+      path = String(href || "").toLowerCase();
+    }
+    if (path.startsWith("/student") || path.includes("/home/dashboard") || path.includes("/academic") || path.includes("/examination")) {
+      return false;
+    }
+    if (doc.querySelector?.(".kt-header__topbar-username") || doc.querySelector?.(".kt-aside__brand") || doc.querySelector?.(".kt-header") || doc.querySelector?.("#kt_header") || doc.querySelector?.("a[href*='Logout' i]") || doc.querySelector?.("a[href*='logout' i]") || doc.querySelector?.("a[href*='SignOut' i]")) {
+      return false;
+    }
+    if (path.includes("/account/login") || path.includes("/home/logout") || path.includes("/account/forgotpassword") || path.includes("/account/externallogin")) {
+      return true;
+    }
+    if (path === "/" || path === "" || path === "/home/index" || path === "/home") {
+      const text = (doc.body?.textContent || "").toLowerCase();
+      const hasLoginButton = Boolean(
+        doc.querySelector?.("input[type='submit'][value*='Sign In' i]") || doc.querySelector?.("input[type='submit'][value*='Login' i]") || doc.querySelector?.("button[type='submit']") || doc.querySelector?.("form[action*='Login' i]")
+      );
+      if (hasLoginButton || text.includes("welcome to muj portal") || text.includes("sign in") || text.includes("parent login")) {
+        return true;
+      }
+    }
+    return false;
+  }
   function detectPage(doc = document, href = location.href) {
+    if (isLoginPage(doc, href)) {
+      return { kind: PAGE_KINDS.login, reason: "login-form" };
+    }
     const url = new URL(href);
     const path = url.pathname.toLowerCase();
     const title = (doc.title || "").toLowerCase();
     const heading = collectHeadings(doc);
     const body = `${title} ${heading} ${path}`;
-    if (/\/home\/logout|\/account\/login|signin|student login/.test(body) && findPasswordField(doc)) {
-      return { kind: PAGE_KINDS.login, reason: "login-form" };
-    }
     if (matches(body, ["attendance", "attendence"]) || /attendance/.test(path)) {
       return { kind: PAGE_KINDS.attendance, reason: "path-or-heading" };
     }
-    if (matches(body, ["internal mark", "internal marks", "sessional", "continuous assessment"])) {
+    if (matches(body, ["internal mark", "internal marks", "sessional", "continuous assessment", "student marks"]) || /internalmark|studentmarks|marksdetail|mark/.test(path)) {
       return { kind: PAGE_KINDS.marks, reason: "path-or-heading" };
     }
-    if (matches(body, ["grade card", "grades", "grade sheet", "gradesheet", "sgpa", "cgpa", "examination"]) || /grade|cgpaga|examination/.test(path)) {
+    if (matches(body, ["grade card", "grades", "grade sheet", "gradesheet", "sgpa", "cgpa"]) || /grade|cgpaga/.test(path) || /examination/.test(path) && !/mark/.test(path)) {
       return { kind: PAGE_KINDS.grades, reason: "path-or-heading" };
     }
     if (matches(body, ["time table", "timetable", "calendar", "schedule"]) || /calendar|timetable|time-table/.test(path)) {
       return { kind: PAGE_KINDS.timetable, reason: "path-or-heading" };
     }
-    if (matches(body, ["dashboard", "student home", "welcome"]) || /\/student\/?$|\/home\/index|\/student\/home/.test(path)) {
+    if (matches(body, ["dashboard", "student home"]) || /\/student\/?$|\/student\/home|\/home\/dashboard/.test(path)) {
       return { kind: PAGE_KINDS.home, reason: "home" };
     }
     return { kind: PAGE_KINDS.other, reason: "unclassified" };
   }
   function collectHeadings(doc) {
     return [...doc.querySelectorAll("h1,h2,h3,.kt-subheader__title,.page-title,.breadcrumb")].slice(0, 8).map((node) => node.textContent).join(" ").toLowerCase();
-  }
-  function findPasswordField(doc) {
-    return Boolean(doc.querySelector('input[type="password"]'));
   }
   function matches(text, needles) {
     return needles.some((needle) => text.includes(needle));
@@ -242,6 +267,84 @@
     }
   }
 
+  // src/shared/theme.js
+  function detectIsDarkMode() {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return false;
+    }
+    const root = document.documentElement;
+    const body = document.body;
+    if (root?.classList?.contains("dark") || body?.classList?.contains("dark") || root?.classList?.contains("theme-dark") || body?.classList?.contains("theme-dark") || root?.classList?.contains("dark-mode") || body?.classList?.contains("dark-mode") || root?.classList?.contains("dark-theme") || body?.classList?.contains("dark-theme") || root?.classList?.contains("slcm-dark") || body?.classList?.contains("slcm-dark") || root?.getAttribute?.("data-theme") === "dark" || body?.getAttribute?.("data-theme") === "dark" || root?.getAttribute?.("data-color-scheme") === "dark" || body?.getAttribute?.("data-color-scheme") === "dark" || root?.hasAttribute?.("data-darkreader-mode") || body?.hasAttribute?.("data-darkreader-mode")) {
+      return true;
+    }
+    try {
+      const checkNodes = [
+        body,
+        root,
+        document.getElementById("kt_body"),
+        document.querySelector(".kt-content"),
+        document.querySelector(".kt-wrapper"),
+        document.querySelector(".kt-page"),
+        document.querySelector(".kt-header")
+      ];
+      for (const el of checkNodes) {
+        if (!el) continue;
+        const bg = window.getComputedStyle(el).backgroundColor;
+        const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (m) {
+          const [r, g, b] = [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)];
+          if (!bg.includes("rgba(0, 0, 0, 0)")) {
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            if (luminance < 140) {
+              return true;
+            }
+          }
+        }
+      }
+    } catch {
+    }
+    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      return true;
+    }
+    return false;
+  }
+  function syncThemeAttribute(target = document.documentElement) {
+    const isDark = detectIsDarkMode();
+    const theme = isDark ? "dark" : "light";
+    if (target?.setAttribute) {
+      target.setAttribute("data-mujx-theme", theme);
+      target.setAttribute("data-theme", theme);
+    }
+    return theme;
+  }
+  function watchThemeChanges(onChange) {
+    if (typeof window === "undefined") return () => {
+    };
+    const handler = () => {
+      const theme = syncThemeAttribute();
+      onChange?.(theme);
+    };
+    let mql = null;
+    if (typeof window.matchMedia === "function") {
+      mql = window.matchMedia("(prefers-color-scheme: dark)");
+      mql.addEventListener?.("change", handler);
+    }
+    const obs = new MutationObserver(() => {
+      handler();
+    });
+    if (document.documentElement) {
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme", "data-darkreader-mode"] });
+    }
+    if (document.body) {
+      obs.observe(document.body, { attributes: true, attributeFilter: ["class", "data-theme", "data-darkreader-mode"] });
+    }
+    handler();
+    return () => {
+      mql?.removeEventListener?.("change", handler);
+      obs.disconnect();
+    };
+  }
+
   // src/content/overlay-manager.js
   var hosts = /* @__PURE__ */ new Set();
   var injected = /* @__PURE__ */ new Set();
@@ -261,7 +364,9 @@
     link.href = chrome.runtime.getURL("src/ui/styles.css");
     const wrap = document.createElement("div");
     wrap.className = "mujx-root";
-    wrap.setAttribute("data-theme", "auto");
+    const isDark = detectIsDarkMode();
+    wrap.setAttribute("data-theme", isDark ? "dark" : "light");
+    wrap.setAttribute("data-mujx-theme", isDark ? "dark" : "light");
     shadow.append(link, wrap);
     place(host, placement);
     hosts.add(host);
@@ -269,7 +374,10 @@
     return { host, shadow, wrap };
   }
   function applyTheme(wrap, theme) {
-    wrap?.setAttribute?.("data-theme", theme || "auto");
+    const isDark = theme === "dark" || theme !== "light" && detectIsDarkMode();
+    const applied = isDark ? "dark" : "light";
+    wrap?.setAttribute?.("data-theme", applied);
+    wrap?.setAttribute?.("data-mujx-theme", applied);
   }
   function injectColumn(table, { key, title, render }) {
     if (!table || table.querySelector(`th[${INJECT_ATTR}="${key}"]`)) return () => {
@@ -352,9 +460,9 @@
     const wrap = (method) => {
       const original = history[method];
       history[method] = function patched(...args) {
-        const result = original.apply(this, args);
+        const result2 = original.apply(this, args);
         notify();
-        return result;
+        return result2;
       };
       return original;
     };
@@ -616,6 +724,9 @@
   function logInfo(message, meta = {}) {
     console.info(PREFIX, message, sanitize(meta));
   }
+  function logWarn(message, meta = {}) {
+    console.warn(PREFIX, message, sanitize(meta));
+  }
   function logError(message, meta = {}) {
     console.error(PREFIX, message, sanitize(meta));
   }
@@ -627,6 +738,101 @@
       }
     }
     return allowed;
+  }
+
+  // src/data/slcm-client.js
+  var inflight = /* @__PURE__ */ new Map();
+  var SessionExpiredError = class extends Error {
+    constructor(path) {
+      super("SLCM session expired or login is required.");
+      this.name = "SessionExpiredError";
+      this.path = path;
+    }
+  };
+  async function slcmRequest(path, { method = "POST", body, timeoutMs = 12e3, retries = 1 } = {}) {
+    const key = `${method}:${path}:${typeof body === "string" ? body : JSON.stringify(body || {})}`;
+    if (inflight.has(key)) return inflight.get(key);
+    const task = runWithRetry(path, method, body, timeoutMs, retries);
+    inflight.set(key, task);
+    try {
+      return await task;
+    } finally {
+      inflight.delete(key);
+    }
+  }
+  async function runWithRetry(path, method, body, timeoutMs, retries) {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await once(path, method, body, timeoutMs);
+      } catch (error) {
+        lastError = error;
+        if (error instanceof SessionExpiredError) throw error;
+        if (attempt === retries) break;
+        await wait(300 * (attempt + 1));
+      }
+    }
+    throw lastError;
+  }
+  async function once(path, method, body, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const token = readAntiForgeryToken();
+      const headers = {
+        Accept: "application/json, text/plain, */*",
+        "X-Requested-With": "XMLHttpRequest"
+      };
+      let payload = body;
+      if (method !== "GET") {
+        headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
+        const params = new URLSearchParams(body || {});
+        if (token && !params.has("__RequestVerificationToken")) {
+          params.set("__RequestVerificationToken", token);
+        }
+        payload = params.toString();
+      }
+      const response = await fetch(path, {
+        method,
+        headers,
+        body: method === "GET" ? void 0 : payload,
+        credentials: "include",
+        signal: controller.signal
+      });
+      if (response.redirected && /login|logout/i.test(response.url)) {
+        throw new SessionExpiredError(path);
+      }
+      const contentType = response.headers.get("content-type") || "";
+      const text = await response.text();
+      if (/login|sign in/i.test(text) && /password/i.test(text) && text.length > 400) {
+        throw new SessionExpiredError(path);
+      }
+      if (!response.ok) {
+        logWarn("request failed", { status: response.status, path });
+        const error = new Error(`HTTP ${response.status}`);
+        error.status = response.status;
+        error.path = path;
+        error.bodyPreview = text.slice(0, 80);
+        throw error;
+      }
+      if (contentType.includes("json") || looksJson(text)) {
+        return { ok: true, data: JSON.parse(text), path };
+      }
+      return { ok: true, data: text, path, kind: "html" };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  function readAntiForgeryToken() {
+    const input = document.querySelector('input[name="__RequestVerificationToken"]');
+    return input?.value || "";
+  }
+  function looksJson(text) {
+    const trimmed = text.trim();
+    return trimmed.startsWith("{") || trimmed.startsWith("[");
+  }
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // src/data/attendance-adapter.js
@@ -684,9 +890,1591 @@
     return { records, table, source: "dom", available: records.length > 0 };
   }
 
+  // src/ui/components/attendance/attendance-intelligence.js
+  var STORAGE_KEY = "st_customTarget";
+  var DEFAULT_TARGET = 75;
+  var MIN_TARGET = 1;
+  var MAX_TARGET = 99;
+  var ROUND_UP_MARGIN = 1;
+  var SAVE_DEBOUNCE_MS = 400;
+  var CSS = `
+  :root, [data-theme="light"] {
+    --att-bar-bg: #f3f6f9;
+    --att-bar-border: rgba(0, 0, 0, 0.06);
+    --att-bar-text: #464457;
+    --att-input-bg: #ffffff;
+    --att-input-border: #cbd5e1;
+    --att-input-color: #212529;
+    --att-summary-color: #64748b;
+    --att-summary-ok: #166534;
+    --att-th-bg: #f3f6f9;
+    --att-th-color: #464457;
+    --att-td-color: #212529;
+    --att-ok-color: #166534;
+    --att-need-color: #b42318;
+    --att-na-color: #94a3b8;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --att-bar-bg: rgba(255, 255, 255, 0.06);
+      --att-bar-border: rgba(255, 255, 255, 0.1);
+      --att-bar-text: #e2e8f0;
+      --att-input-bg: rgba(0, 0, 0, 0.35);
+      --att-input-border: rgba(255, 255, 255, 0.2);
+      --att-input-color: #f1f5f9;
+      --att-summary-color: #94a3b8;
+      --att-summary-ok: #34d399;
+      --att-th-bg: rgba(255, 255, 255, 0.06);
+      --att-th-color: #e2e8f0;
+      --att-td-color: #cbd5e1;
+      --att-ok-color: #34d399;
+      --att-need-color: #fb7185;
+      --att-na-color: #64748b;
+    }
+  }
+
+  html.dark, body.dark, [data-theme="dark"], [data-mujx-theme="dark"], html[data-darkreader-mode], body[data-darkreader-mode], html[data-color-scheme="dark"] {
+    --att-bar-bg: rgba(255, 255, 255, 0.06) !important;
+    --att-bar-border: rgba(255, 255, 255, 0.1) !important;
+    --att-bar-text: #e2e8f0 !important;
+    --att-input-bg: rgba(0, 0, 0, 0.35) !important;
+    --att-input-border: rgba(255, 255, 255, 0.2) !important;
+    --att-input-color: #f1f5f9 !important;
+    --att-summary-color: #94a3b8 !important;
+    --att-summary-ok: #34d399 !important;
+    --att-th-bg: rgba(255, 255, 255, 0.06) !important;
+    --att-th-color: #e2e8f0 !important;
+    --att-td-color: #cbd5e1 !important;
+    --att-ok-color: #34d399 !important;
+    --att-need-color: #fb7185 !important;
+    --att-na-color: #64748b !important;
+  }
+
+  #st-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding: 8px 12px;
+    background: var(--att-bar-bg) !important;
+    border: 1px solid var(--att-bar-border) !important;
+    border-radius: 6px;
+    font-size: 13px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #st-bar[hidden] { display: none; }
+  .st-target {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-weight: 600;
+    color: var(--att-bar-text) !important;
+  }
+  .st-target input {
+    width: 64px;
+    padding: 2px 4px;
+    text-align: center;
+    font-size: 13px;
+    border: 1px solid var(--att-input-border) !important;
+    border-radius: 4px;
+    background: var(--att-input-bg) !important;
+    color: var(--att-input-color) !important;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .st-target input:focus {
+    outline: none;
+    border-color: #5d78ff !important;
+    box-shadow: 0 0 0 2px rgba(93, 120, 255, .2);
+  }
+  #st-summary {
+    color: var(--att-summary-color) !important;
+    font-size: 13px;
+    font-weight: 600;
+    transition: color .2s;
+  }
+  #st-summary.st-all-ok {
+    color: var(--att-summary-ok) !important;
+  }
+  th.st-th {
+    text-align: center;
+    background: var(--att-th-bg) !important;
+    color: var(--att-th-color) !important;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  td.st-td {
+    text-align: center;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--att-td-color) !important;
+  }
+  td.st-td[data-s="need"] {
+    color: var(--att-need-color) !important;
+  }
+  td.st-td[data-s="ok"] {
+    color: var(--att-ok-color) !important;
+  }
+  td.st-td[data-s="na"] {
+    color: var(--att-na-color) !important;
+    font-weight: 400;
+  }
+`;
+  function injectStyles() {
+    if (document.getElementById("st-styles")) return;
+    const s = document.createElement("style");
+    s.id = "st-styles";
+    s.textContent = CSS;
+    (document.head || document.documentElement).appendChild(s);
+  }
+  function calcClassesNeeded(p, n, T) {
+    const t = T - ROUND_UP_MARGIN;
+    const num = t * n - 100 * p;
+    if (num < 0) return 0;
+    return Math.floor(num / (100 - t)) + 1;
+  }
+  function calcSafeSkips(p, n, T) {
+    const t = T - ROUND_UP_MARGIN;
+    const s = 100 * p - t * n;
+    if (s <= 0) return 0;
+    if (t <= 0) return Infinity;
+    return Math.floor((s - 1) / t);
+  }
+  function clampTarget(v) {
+    const n = parseInt(v, 10);
+    if (isNaN(n)) return DEFAULT_TARGET;
+    return Math.min(MAX_TARGET, Math.max(MIN_TARGET, n));
+  }
+  function setText(el, s) {
+    s = String(s);
+    if (el.textContent !== s) el.textContent = s;
+  }
+  function setCell(cell, text, state) {
+    setText(cell, text);
+    if (cell.dataset.s !== state) cell.dataset.s = state;
+  }
+  function getColumns(tbl) {
+    const headRow = tbl.tHead && tbl.tHead.rows[0] || tbl.rows[0];
+    if (!headRow) return null;
+    const idx = { present: -1, total: -1 };
+    for (let i = 0; i < headRow.cells.length; i++) {
+      const c = headRow.cells[i];
+      if (c.id === "st-classes-needed" || c.id === "st-absences-custom") continue;
+      const t = textOf(c).toLowerCase().trim();
+      if (t === "present" || t.includes("attended") || t === "total present") idx.present = i;
+      else if (t === "total" || t.includes("conducted") || t === "total class") idx.total = i;
+    }
+    if (idx.present === -1 || idx.total === -1) return null;
+    return { headRow, idx };
+  }
+  function dropOurCells(row) {
+    row.querySelectorAll(".st-cn-td, .st-ac-td").forEach((el) => el.remove());
+  }
+  function removeOurs(tbl) {
+    tbl.querySelectorAll("#st-classes-needed, #st-absences-custom, .st-cn-td, .st-ac-td").forEach((el) => el.remove());
+  }
+  function makeTh(id, text, tip) {
+    const th = document.createElement("th");
+    th.id = id;
+    th.className = "st-th";
+    th.title = tip;
+    th.textContent = text;
+    return th;
+  }
+  function injectHeaders(headRow) {
+    if (!headRow.querySelector("#st-classes-needed")) {
+      headRow.appendChild(
+        makeTh("st-classes-needed", "Classes Needed", "Consecutive classes you must attend to reach your target")
+      );
+    }
+    if (!headRow.querySelector("#st-absences-custom")) {
+      headRow.appendChild(
+        makeTh("st-absences-custom", "Safe Skips", "Classes you can miss and still stay at or above your target")
+      );
+    }
+  }
+  function ensureCells(row) {
+    let cn = row.querySelector(".st-cn-td");
+    let ac = row.querySelector(".st-ac-td");
+    if (!cn) {
+      cn = row.insertCell(-1);
+      cn.className = "st-td st-cn-td";
+    }
+    if (!ac) {
+      ac = row.insertCell(-1);
+      ac.className = "st-td st-ac-td";
+    }
+    return { cn, ac };
+  }
+  function buildBar(currentTarget, onTargetChange) {
+    const b = document.createElement("div");
+    b.id = "st-bar";
+    b.setAttribute(INJECT_ATTR, "att-bar");
+    const label = document.createElement("label");
+    label.className = "st-target";
+    label.appendChild(document.createTextNode("Target attendance"));
+    const input = document.createElement("input");
+    input.type = "number";
+    input.id = "st-custom-target";
+    input.value = String(currentTarget);
+    input.min = String(MIN_TARGET);
+    input.max = String(MAX_TARGET);
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.addEventListener("keydown", (e) => {
+      if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
+      if (e.key === "Enter") input.blur();
+    });
+    input.addEventListener("input", () => {
+      const val = parseInt(input.value, 10);
+      if (!isNaN(val) && val >= MIN_TARGET && val <= MAX_TARGET) {
+        onTargetChange(val);
+      }
+    });
+    input.addEventListener("blur", () => {
+      const val = clampTarget(input.value);
+      input.value = String(val);
+      onTargetChange(val);
+    });
+    label.appendChild(input);
+    label.appendChild(document.createTextNode("%"));
+    const summaryEl = document.createElement("span");
+    summaryEl.id = "st-summary";
+    b.appendChild(label);
+    b.appendChild(summaryEl);
+    return { bar: b, input, summaryEl };
+  }
+  function enhanceAttendanceTable({ table, initialTarget = 75, onTargetChange }) {
+    if (!table) return () => {
+    };
+    syncThemeAttribute(document.documentElement);
+    const unwatchTheme = watchThemeChanges(() => {
+      syncThemeAttribute(document.documentElement);
+    });
+    injectStyles();
+    let customTarget = clampTarget(initialTarget);
+    let userEdited = false;
+    let saveTimer = null;
+    let bar = null;
+    let inputEl = null;
+    let summaryEl = null;
+    let pending = false;
+    function saveTarget(val) {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        try {
+          chrome?.storage?.local?.set({
+            [STORAGE_KEY]: val,
+            attendanceThreshold: val
+          });
+        } catch {
+        }
+      }, SAVE_DEBOUNCE_MS);
+    }
+    function loadTarget() {
+      try {
+        chrome?.storage?.local?.get([STORAGE_KEY, "attendanceThreshold"], (data) => {
+          if (userEdited) return;
+          const val = data?.[STORAGE_KEY] ?? data?.attendanceThreshold;
+          if (val != null) {
+            const v = clampTarget(val);
+            if (v !== customTarget) {
+              customTarget = v;
+              if (inputEl && inputEl.isConnected) inputEl.value = String(v);
+              schedule();
+            }
+          }
+        });
+      } catch {
+      }
+    }
+    function mountBar() {
+      if (bar && bar.isConnected) return;
+      if (!bar) {
+        const built = buildBar(customTarget, (newVal) => {
+          userEdited = true;
+          customTarget = newVal;
+          saveTarget(newVal);
+          onTargetChange?.(newVal);
+          schedule();
+        });
+        bar = built.bar;
+        inputEl = built.input;
+        summaryEl = built.summaryEl;
+      }
+      const host = table.closest(".dataTables_wrapper, .table-responsive, .table-scrollable") || table;
+      if (host.parentNode) {
+        host.parentNode.insertBefore(bar, host);
+      }
+    }
+    function update() {
+      const cols = getColumns(table);
+      if (!cols) {
+        removeOurs(table);
+        if (bar) bar.hidden = true;
+        return;
+      }
+      mountBar();
+      bar.hidden = false;
+      injectHeaders(cols.headRow);
+      const { present, total } = cols.idx;
+      const minCols = Math.max(present, total);
+      let below = 0;
+      let counted = 0;
+      const rows = table.rows;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row === cols.headRow || row.querySelector("th")) continue;
+        if (row.cells.length <= minCols || row.querySelector("td[colspan], td.dataTables_empty")) {
+          dropOurCells(row);
+          continue;
+        }
+        const { cn, ac } = ensureCells(row);
+        const p = parseInt(textOf(row.cells[present]), 10);
+        const n = parseInt(textOf(row.cells[total]), 10);
+        if (isNaN(p) || isNaN(n) || n <= 0) {
+          setCell(cn, "\u2013", "na");
+          setCell(ac, "\u2013", "na");
+          continue;
+        }
+        counted++;
+        const needed = calcClassesNeeded(p, n, customTarget);
+        const skips = calcSafeSkips(p, n, customTarget);
+        if (needed > 0) below++;
+        setCell(cn, needed === 0 ? "\u2013" : needed, needed === 0 ? "ok" : "need");
+        setCell(ac, skips === Infinity ? "\u221E" : skips > 0 ? skips : "\u2013", skips > 0 ? "ok" : "na");
+      }
+      if (summaryEl) {
+        const allOk = counted > 0 && below === 0;
+        summaryEl.classList.toggle("st-all-ok", allOk);
+        setText(
+          summaryEl,
+          counted === 0 ? "" : allOk ? `All courses at or above ${customTarget}%` : `${below} of ${counted} course${counted === 1 ? "" : "s"} below ${customTarget}%`
+        );
+      }
+    }
+    const observer = new MutationObserver(schedule);
+    function observe() {
+      if (table && table.isConnected) {
+        observer.observe(table, { childList: true, subtree: true });
+      }
+    }
+    function schedule() {
+      if (pending) return;
+      pending = true;
+      setTimeout(run, 50);
+    }
+    function run() {
+      pending = false;
+      observer.disconnect();
+      try {
+        update();
+      } catch (e) {
+        console.warn("[MUJX attendance]", e);
+      } finally {
+        observe();
+      }
+    }
+    loadTarget();
+    observe();
+    schedule();
+    return () => {
+      unwatchTheme();
+      observer.disconnect();
+      removeOurs(table);
+      bar?.remove();
+    };
+  }
+  function mountAttendanceSummaryFeature(prefs = {}) {
+    let cleanup = null;
+    function tryMount() {
+      const table = document.getElementById("kt_ViewTable") || document.querySelector("table");
+      if (!table) return false;
+      const cols = getColumns(table);
+      if (!cols) return false;
+      if (!cleanup) {
+        cleanup = enhanceAttendanceTable({
+          table,
+          initialTarget: prefs.attendanceThreshold || DEFAULT_TARGET,
+          onTargetChange: (t) => {
+            prefs.attendanceThreshold = t;
+          }
+        });
+      }
+      return true;
+    }
+    if (tryMount()) return () => cleanup?.();
+    const bodyObs = new MutationObserver(() => {
+      if (tryMount()) {
+        bodyObs.disconnect();
+      }
+    });
+    bodyObs.observe(document.body, { childList: true, subtree: true });
+    let tries = 0;
+    const poll = setInterval(() => {
+      if (tryMount() || ++tries > 25) {
+        clearInterval(poll);
+        bodyObs.disconnect();
+      }
+    }, 200);
+    return () => {
+      clearInterval(poll);
+      bodyObs.disconnect();
+      cleanup?.();
+    };
+  }
+
+  // src/ui/components/dashboard/dashboard.js
+  var KEY = "mujx_dashboard_enabled";
+  var MAX_CONCURRENT_DETAILS = 2;
+  var DAY_DEBOUNCE_MS = 250;
+  var MIN_ATTENDANCE = 75;
+  var attCache = /* @__PURE__ */ new Map();
+  var viewDate = /* @__PURE__ */ new Date();
+  var abortCtl = null;
+  var navTimer = null;
+  var dateLabel = null;
+  var todayBtn = null;
+  var DASHBOARD_CSS = `
+  :root, [data-theme="light"] {
+    --mf-bg-card: #f8f9fa;
+    --mf-border-card: rgba(0, 0, 0, 0.06);
+    --mf-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05);
+    --mf-title-color: #333333;
+    --mf-time-color: #7a8190;
+    --mf-status-color: #64748b;
+    --mf-nav-bg: #f3f6f9;
+    --mf-nav-btn: #555555;
+    --mf-nav-btn-hover: #e4e8ee;
+    --mf-date-color: #333333;
+    --mf-head-color: #464457;
+    --mf-head-border: #ebedf2;
+    --mf-table-head-bg: #f3f6f9;
+    --mf-table-th-color: #464457;
+    --mf-table-td-color: #212529;
+    --mf-table-border: #ebedf2;
+    --mf-table-striped: rgba(0, 0, 0, 0.02);
+    --mf-table-hover: rgba(0, 0, 0, 0.04);
+    --mf-switch-label: #475569;
+    --mf-track-bg: #cbd5e1;
+    --mf-banner-bg: #fff1f2;
+    --mf-banner-border: #fecdd3;
+    --mf-banner-color: #b42318;
+    --mf-pill-ok-bg: #e6f6ec;
+    --mf-pill-ok-color: #166534;
+    --mf-pill-warn-bg: #fff4d6;
+    --mf-pill-warn-color: #92600a;
+    --mf-pill-bad-bg: #fde8e8;
+    --mf-pill-bad-color: #b42318;
+    --mf-notice-info-bg: #e8f4fd;
+    --mf-notice-info-color: #0d8abc;
+    --mf-notice-sec-bg: #f1f5f9;
+    --mf-notice-sec-color: #64748b;
+    --mf-notice-danger-bg: #fde8e8;
+    --mf-notice-danger-color: #b42318;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --mf-bg-card: rgba(255, 255, 255, 0.05);
+      --mf-border-card: rgba(255, 255, 255, 0.08);
+      --mf-shadow-card: 0 1px 4px rgba(0, 0, 0, 0.35);
+      --mf-title-color: #f1f5f9;
+      --mf-time-color: #94a3b8;
+      --mf-status-color: #94a3b8;
+      --mf-nav-bg: rgba(255, 255, 255, 0.06);
+      --mf-nav-btn: #cbd5e1;
+      --mf-nav-btn-hover: rgba(255, 255, 255, 0.12);
+      --mf-date-color: #f1f5f9;
+      --mf-head-color: #f1f5f9;
+      --mf-head-border: rgba(255, 255, 255, 0.1);
+      --mf-table-head-bg: rgba(255, 255, 255, 0.06);
+      --mf-table-th-color: #e2e8f0;
+      --mf-table-td-color: #cbd5e1;
+      --mf-table-border: rgba(255, 255, 255, 0.08);
+      --mf-table-striped: rgba(255, 255, 255, 0.02);
+      --mf-table-hover: rgba(255, 255, 255, 0.04);
+      --mf-switch-label: #cbd5e1;
+      --mf-track-bg: #475569;
+      --mf-banner-bg: rgba(225, 29, 72, 0.15);
+      --mf-banner-border: rgba(225, 29, 72, 0.35);
+      --mf-banner-color: #fb7185;
+      --mf-pill-ok-bg: rgba(16, 185, 129, 0.18);
+      --mf-pill-ok-color: #34d399;
+      --mf-pill-warn-bg: rgba(245, 158, 11, 0.18);
+      --mf-pill-warn-color: #fbbf24;
+      --mf-pill-bad-bg: rgba(244, 63, 94, 0.18);
+      --mf-pill-bad-color: #fb7185;
+      --mf-notice-info-bg: rgba(37, 99, 235, 0.16);
+      --mf-notice-info-color: #60a5fa;
+      --mf-notice-sec-bg: rgba(255, 255, 255, 0.05);
+      --mf-notice-sec-color: #94a3b8;
+      --mf-notice-danger-bg: rgba(225, 29, 72, 0.16);
+      --mf-notice-danger-color: #fb7185;
+    }
+  }
+
+  html.dark, body.dark, [data-theme="dark"], [data-mujx-theme="dark"], html[data-darkreader-mode], body[data-darkreader-mode], html[data-color-scheme="dark"], .theme-dark, .dark-mode, .dark-theme, .slcm-dark {
+    --mf-bg-card: rgba(255, 255, 255, 0.05) !important;
+    --mf-border-card: rgba(255, 255, 255, 0.08) !important;
+    --mf-shadow-card: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+    --mf-title-color: #f1f5f9 !important;
+    --mf-time-color: #94a3b8 !important;
+    --mf-status-color: #94a3b8 !important;
+    --mf-nav-bg: rgba(255, 255, 255, 0.06) !important;
+    --mf-nav-btn: #cbd5e1 !important;
+    --mf-nav-btn-hover: rgba(255, 255, 255, 0.12) !important;
+    --mf-date-color: #f1f5f9 !important;
+    --mf-head-color: #f1f5f9 !important;
+    --mf-head-border: rgba(255, 255, 255, 0.1) !important;
+    --mf-table-head-bg: rgba(255, 255, 255, 0.06) !important;
+    --mf-table-th-color: #e2e8f0 !important;
+    --mf-table-td-color: #cbd5e1 !important;
+    --mf-table-border: rgba(255, 255, 255, 0.08) !important;
+    --mf-table-striped: rgba(255, 255, 255, 0.02) !important;
+    --mf-table-hover: rgba(255, 255, 255, 0.04) !important;
+    --mf-switch-label: #cbd5e1 !important;
+    --mf-track-bg: #475569 !important;
+    --mf-banner-bg: rgba(225, 29, 72, 0.15) !important;
+    --mf-banner-border: rgba(225, 29, 72, 0.35) !important;
+    --mf-banner-color: #fb7185 !important;
+    --mf-pill-ok-bg: rgba(16, 185, 129, 0.18) !important;
+    --mf-pill-ok-color: #34d399 !important;
+    --mf-pill-warn-bg: rgba(245, 158, 11, 0.18) !important;
+    --mf-pill-warn-color: #fbbf24 !important;
+    --mf-pill-bad-bg: rgba(244, 63, 94, 0.18) !important;
+    --mf-pill-bad-color: #fb7185 !important;
+    --mf-notice-info-bg: rgba(37, 99, 235, 0.16) !important;
+    --mf-notice-info-color: #60a5fa !important;
+    --mf-notice-sec-bg: rgba(255, 255, 255, 0.05) !important;
+    --mf-notice-sec-color: #94a3b8 !important;
+    --mf-notice-danger-bg: rgba(225, 29, 72, 0.16) !important;
+    --mf-notice-danger-color: #fb7185 !important;
+  }
+
+  .mujx-hidden { display: none !important; }
+
+  /* Toggle bar */
+  #mujx-dash-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin: 0 0 10px;
+    padding: 4px 0;
+  }
+  .mujx-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mf-switch-label);
+    user-select: none;
+  }
+  .mujx-switch input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .mujx-track {
+    position: relative;
+    width: 30px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--mf-track-bg);
+    transition: background .2s;
+  }
+  .mujx-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .2s;
+  }
+  .mujx-switch input:checked + .mujx-track {
+    background: #22c55e;
+  }
+  .mujx-switch input:checked + .mujx-track::after {
+    transform: translateX(14px);
+  }
+  .mujx-switch input:focus-visible + .mujx-track {
+    outline: 2px solid #5d78ff;
+    outline-offset: 2px;
+  }
+
+  /* Timetable Column */
+  #mujx-timetable {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .mf-head, .mujx-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--mf-head-border) !important;
+    padding-bottom: 10px;
+  }
+  .mf-head h6, .mujx-head h6 {
+    margin: 0;
+    font-weight: 600;
+    color: var(--mf-head-color) !important;
+    font-size: 1rem;
+  }
+  .mf-nav, .mujx-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--mf-nav-bg) !important;
+    padding: 3px 6px;
+    border-radius: 6px;
+  }
+  .mf-nav button, .mujx-nav button {
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: var(--mf-nav-btn) !important;
+    font-size: 1.2em;
+    line-height: 1;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .mf-nav button:hover, .mujx-nav button:hover {
+    background: var(--mf-nav-btn-hover) !important;
+  }
+  .mf-date, .mujx-date {
+    min-width: 84px;
+    text-align: center;
+    font-size: .85em;
+    font-weight: 700;
+    color: var(--mf-date-color) !important;
+  }
+  .mf-today, .mujx-today {
+    font-size: .75em !important;
+    font-weight: 600;
+    color: #5d78ff !important;
+  }
+  .mf-list, .mujx-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .mf-card {
+    --c: #6c6c6c;
+    border-left: 4px solid var(--c) !important;
+    padding: 10px 12px !important;
+    background: var(--mf-bg-card) !important;
+    border: 1px solid var(--mf-border-card) !important;
+    border-left: 4px solid var(--c) !important;
+    border-radius: 4px !important;
+    box-shadow: var(--mf-shadow-card) !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .mf-time {
+    font-size: .75em !important;
+    color: var(--mf-time-color) !important;
+    margin-bottom: 2px !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+  .mf-title {
+    font-weight: 500 !important;
+    font-size: .9em !important;
+    margin-bottom: 6px !important;
+    color: var(--mf-title-color) !important;
+    line-height: 1.3 !important;
+  }
+  .mf-status {
+    font-size: .85em !important;
+    color: var(--mf-status-color) !important;
+  }
+
+  /* Attendance Summary Column */
+  #mujx-summary-container {
+    margin-bottom: 25px;
+  }
+  #mujx-summary-container h6 {
+    margin: 0;
+    font-weight: 600;
+    color: var(--mf-head-color) !important;
+    font-size: 1rem;
+  }
+  #mujx-summary-container hr {
+    border-color: var(--mf-head-border) !important;
+  }
+  #mujx-summary-body {
+    overflow-x: auto;
+  }
+  .mujx-table {
+    width: 100%;
+    margin-bottom: 1rem;
+    color: var(--mf-table-td-color) !important;
+    border-collapse: collapse;
+  }
+  .mujx-table thead tr {
+    background: var(--mf-table-head-bg) !important;
+  }
+  .mujx-table tbody tr:nth-of-type(odd) {
+    background-color: var(--mf-table-striped) !important;
+  }
+  .mujx-table tbody tr:hover {
+    background-color: var(--mf-table-hover) !important;
+  }
+  .mujx-table th {
+    padding: 0.75rem;
+    vertical-align: top;
+    border-top: 1px solid var(--mf-table-border) !important;
+    border-bottom: 1px solid var(--mf-table-border) !important;
+    font-weight: 600;
+    color: var(--mf-table-th-color) !important;
+    font-size: 13px;
+  }
+  .mujx-table td {
+    padding: 0.75rem;
+    vertical-align: middle;
+    border-top: 1px solid var(--mf-table-border) !important;
+    border-bottom: 1px solid var(--mf-table-border) !important;
+    font-size: 13px;
+    color: var(--mf-table-td-color) !important;
+  }
+  .mujx-c {
+    text-align: center;
+  }
+  .mujx-pill {
+    display: inline-block;
+    min-width: 52px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: .9em;
+    text-align: center;
+  }
+  .mujx-ok {
+    background: var(--mf-pill-ok-bg) !important;
+    color: var(--mf-pill-ok-color) !important;
+  }
+  .mujx-warn {
+    background: var(--mf-pill-warn-bg) !important;
+    color: var(--mf-pill-warn-color) !important;
+  }
+  .mujx-bad {
+    background: var(--mf-pill-bad-bg) !important;
+    color: var(--mf-pill-bad-color) !important;
+  }
+  .mujx-low-att-banner {
+    padding: 8px 14px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    background: var(--mf-banner-bg) !important;
+    border: 1px solid var(--mf-banner-border) !important;
+    color: var(--mf-banner-color) !important;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .mujx-notice {
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .mujx-notice-info {
+    background: var(--mf-notice-info-bg) !important;
+    color: var(--mf-notice-info-color) !important;
+  }
+  .mujx-notice-secondary {
+    background: var(--mf-notice-sec-bg) !important;
+    color: var(--mf-notice-sec-color) !important;
+  }
+  .mujx-notice-danger {
+    background: var(--mf-notice-danger-bg) !important;
+    color: var(--mf-notice-danger-color) !important;
+  }
+`;
+  function injectStyles2() {
+    if (document.getElementById("mujx-dashboard-styles")) return;
+    const s = document.createElement("style");
+    s.id = "mujx-dashboard-styles";
+    s.setAttribute(INJECT_ATTR, "dash-styles");
+    s.textContent = DASHBOARD_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  }
+  function getColumns2() {
+    const ev = document.getElementById("kt_ViewEvent");
+    const col9 = ev && (ev.closest(".col-md-9") || ev.closest(".col-lg-9"));
+    return { ev, col9, leftCol: col9 ? col9.previousElementSibling : null };
+  }
+  function findEventsHeader(col9) {
+    return Array.from((col9 || document).querySelectorAll("h6")).find(
+      (h) => h.textContent.includes("List of Events")
+    );
+  }
+  function mountAcademicDashboard({ container, prefs }) {
+    let cleanup = null;
+    async function tryMount() {
+      const { ev, col9, leftCol } = getColumns2();
+      if (!ev && !col9) return false;
+      if (!cleanup) {
+        syncThemeAttribute(document.documentElement);
+        const unwatchTheme = watchThemeChanges(() => {
+          syncThemeAttribute(document.documentElement);
+        });
+        injectStyles2();
+        let enabled = true;
+        try {
+          const stored = await chrome.storage.local.get([KEY]);
+          if (stored && stored[KEY] !== void 0) {
+            enabled = Boolean(stored[KEY]);
+          }
+        } catch {
+        }
+        addToggle(enabled);
+        if (enabled) {
+          mountTimetable(leftCol);
+          loadSummary(col9, ev);
+        }
+        cleanup = () => {
+          unwatchTheme();
+          cleanupDashboard();
+        };
+      }
+      return true;
+    }
+    if (tryMount()) return () => cleanup?.();
+    const obs = new MutationObserver(() => {
+      if (tryMount()) obs.disconnect();
+    });
+    if (document.body || document.documentElement) {
+      obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    }
+    let tries = 0;
+    const poll = setInterval(() => {
+      if (tryMount() || ++tries > 30) {
+        clearInterval(poll);
+        obs.disconnect();
+      }
+    }, 200);
+    return () => {
+      clearInterval(poll);
+      obs.disconnect();
+      cleanup?.();
+    };
+  }
+  function addToggle(enabled) {
+    if (document.getElementById("mujx-dash-bar")) return;
+    const { ev, col9 } = getColumns2();
+    const row = col9 && col9.parentElement;
+    const anchor = row || ev && ev.parentElement;
+    if (!anchor || !anchor.parentElement) return;
+    const bar = document.createElement("div");
+    bar.id = "mujx-dash-bar";
+    bar.setAttribute(INJECT_ATTR, "dash-bar");
+    const label = document.createElement("label");
+    label.className = "mujx-switch";
+    label.title = "Switch between the enhanced dashboard and the original portal view";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.id = "mujx-dashboard-toggle";
+    input.checked = enabled;
+    input.addEventListener("change", async () => {
+      input.disabled = true;
+      try {
+        await chrome.storage.local.set({ [KEY]: input.checked });
+        location.reload();
+      } catch {
+        input.disabled = false;
+      }
+    });
+    const track = document.createElement("span");
+    track.className = "mujx-track";
+    label.appendChild(input);
+    label.appendChild(track);
+    label.appendChild(document.createTextNode("Enhanced view"));
+    bar.appendChild(label);
+    anchor.parentElement.insertBefore(bar, anchor);
+  }
+  function mountTimetable(leftCol) {
+    if (!leftCol) return null;
+    if (!leftCol.querySelector("#mujx-timetable")) {
+      Array.from(leftCol.children).forEach((ch) => {
+        if (ch.id !== "mujx-timetable") ch.classList.add("mujx-hidden");
+      });
+      leftCol.appendChild(buildTimetableElement());
+      loadClasses();
+    }
+    return leftCol;
+  }
+  function buildTimetableElement() {
+    const root = document.createElement("div");
+    root.id = "mujx-timetable";
+    root.setAttribute(INJECT_ATTR, "tt-root");
+    const head = document.createElement("div");
+    head.className = "mujx-head";
+    const h6 = document.createElement("h6");
+    h6.textContent = "Timetable";
+    head.appendChild(h6);
+    const nav = document.createElement("div");
+    nav.className = "mujx-nav";
+    todayBtn = document.createElement("button");
+    todayBtn.type = "button";
+    todayBtn.className = "mujx-today";
+    todayBtn.textContent = "Today";
+    todayBtn.addEventListener("click", () => goToDate(/* @__PURE__ */ new Date()));
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.textContent = "\u2039";
+    prevBtn.setAttribute("aria-label", "Previous day");
+    prevBtn.addEventListener("click", () => shiftDay(-1));
+    dateLabel = document.createElement("span");
+    dateLabel.className = "mujx-date";
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.textContent = "\u203A";
+    nextBtn.setAttribute("aria-label", "Next day");
+    nextBtn.addEventListener("click", () => shiftDay(1));
+    nav.appendChild(todayBtn);
+    nav.appendChild(prevBtn);
+    nav.appendChild(dateLabel);
+    nav.appendChild(nextBtn);
+    head.appendChild(nav);
+    root.appendChild(head);
+    const container = document.createElement("div");
+    container.id = "mujx-classes-container";
+    root.appendChild(container);
+    updateDateUI();
+    return root;
+  }
+  function updateDateUI() {
+    const today = sameDay(viewDate, /* @__PURE__ */ new Date());
+    if (dateLabel) {
+      dateLabel.textContent = today ? "Today" : viewDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    }
+    if (todayBtn) todayBtn.hidden = today;
+  }
+  function goToDate(date) {
+    viewDate = date;
+    updateDateUI();
+    if (abortCtl) abortCtl.abort();
+    const container = document.getElementById("mujx-classes-container");
+    if (container) {
+      container.textContent = "";
+      const notice = document.createElement("div");
+      notice.className = "mujx-notice mujx-notice-info";
+      notice.textContent = "Loading classes...";
+      container.appendChild(notice);
+    }
+    clearTimeout(navTimer);
+    navTimer = setTimeout(loadClasses, DAY_DEBOUNCE_MS);
+  }
+  function shiftDay(delta) {
+    const d = new Date(viewDate);
+    d.setDate(d.getDate() + delta);
+    goToDate(d);
+  }
+  async function loadClasses() {
+    const container = document.getElementById("mujx-classes-container");
+    if (!container) return;
+    if (abortCtl) abortCtl.abort();
+    abortCtl = new AbortController();
+    const ctl = abortCtl;
+    container.textContent = "";
+    const infoNotice = document.createElement("div");
+    infoNotice.className = "mujx-notice mujx-notice-info";
+    infoNotice.textContent = "Loading classes...";
+    container.appendChild(infoNotice);
+    try {
+      const res = await slcmRequest("/Student/Academic/GetStudentCalenderEventList", {
+        body: {
+          Year: "",
+          Month: "",
+          Type: "agendaDay",
+          Dated: apiDate(viewDate),
+          PreNext: "3"
+        }
+      });
+      if (ctl.signal.aborted || !container.isConnected) return;
+      const list = Array.isArray(res?.data) ? res.data.filter((x) => x && typeof x === "object").sort(byStart) : [];
+      const jobs = renderClasses(container, list, ctl.signal);
+      await runLimitedJobs(jobs, MAX_CONCURRENT_DETAILS, ctl.signal);
+    } catch (err) {
+      if (ctl.signal.aborted || !container.isConnected) return;
+      container.textContent = "";
+      const dangerNotice = document.createElement("div");
+      dangerNotice.className = "mujx-notice mujx-notice-danger";
+      dangerNotice.textContent = "Error loading classes. ";
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "btn btn-sm btn-outline-danger ml-2";
+      retryBtn.style.padding = "1px 6px";
+      retryBtn.style.fontSize = "11px";
+      retryBtn.textContent = "Retry";
+      retryBtn.addEventListener("click", loadClasses);
+      dangerNotice.appendChild(retryBtn);
+      container.appendChild(dangerNotice);
+    }
+  }
+  function renderClasses(container, list, signal) {
+    container.textContent = "";
+    if (!list.length) {
+      const secNotice = document.createElement("div");
+      secNotice.className = "mujx-notice mujx-notice-secondary";
+      secNotice.textContent = "No classes scheduled for this date.";
+      container.appendChild(secNotice);
+      return [];
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "mf-list";
+    const jobs = [];
+    list.forEach((item) => {
+      const s = classifyEventColor(item.eventColorCode);
+      const card = document.createElement("div");
+      card.className = "mf-card";
+      card.style.setProperty("--c", s.color);
+      const time = timeRange(item);
+      if (time) {
+        const timeEl = document.createElement("div");
+        timeEl.className = "mf-time";
+        timeEl.textContent = time;
+        card.appendChild(timeEl);
+      }
+      const titleEl = document.createElement("div");
+      titleEl.className = "mf-title";
+      titleEl.textContent = item.Description || item.title || "";
+      card.appendChild(titleEl);
+      const statusEl = document.createElement("div");
+      statusEl.className = "mf-status";
+      setStatus(statusEl, s);
+      card.appendChild(statusEl);
+      wrap.appendChild(card);
+      const eventId = item.EntryNo || item.id;
+      if (!eventId || !s.detail) return;
+      if (attCache.has(eventId)) {
+        applyAttendanceBadge(card, statusEl, attCache.get(eventId));
+        return;
+      }
+      jobs.push(async () => {
+        try {
+          const d = await slcmRequest("/Student/Academic/GetEventDetailStudent", {
+            body: { EventID: String(eventId) }
+          });
+          if (signal?.aborted || !card.isConnected) return;
+          const type = d?.data?.AttendanceType?.trim?.() || "";
+          if (!type) return;
+          attCache.set(eventId, type);
+          applyAttendanceBadge(card, statusEl, type);
+        } catch {
+        }
+      });
+    });
+    container.appendChild(wrap);
+    return jobs;
+  }
+  function setStatus(statusEl, s) {
+    statusEl.textContent = s.label;
+    statusEl.style.color = s.color;
+    statusEl.style.fontWeight = s.bold ? "500" : "normal";
+  }
+  function applyAttendanceBadge(card, statusEl, type) {
+    statusEl.innerHTML = `<strong>${escapeHtml(type)}</strong>`;
+    const t = type.toLowerCase();
+    const tint = t.includes("absent") ? "#e53935" : t.includes("not considered") ? "#2196f3" : t.includes("present") ? "#22c55e" : null;
+    if (tint) {
+      statusEl.style.color = tint;
+      card.style.setProperty("--c", tint);
+    }
+  }
+  function mountSummary(col9, ev) {
+    if (!ev) return null;
+    let box = document.getElementById("mujx-summary-container");
+    if (box) return box.querySelector("#mujx-summary-body");
+    box = document.createElement("div");
+    box.id = "mujx-summary-container";
+    box.setAttribute(INJECT_ATTR, "summary-box");
+    const h6 = document.createElement("h6");
+    h6.textContent = "Attendance Summary";
+    box.appendChild(h6);
+    box.appendChild(document.createElement("hr"));
+    const body = document.createElement("div");
+    body.id = "mujx-summary-body";
+    box.appendChild(body);
+    const anchor = findEventsHeader(col9) || ev.parentElement;
+    if (!anchor || !anchor.parentElement) return null;
+    anchor.parentElement.insertBefore(box, anchor);
+    const infoNotice = document.createElement("div");
+    infoNotice.className = "mujx-notice mujx-notice-info";
+    infoNotice.textContent = "Loading attendance...";
+    body.appendChild(infoNotice);
+    return body;
+  }
+  function hidePortalEvents(col9, ev) {
+    const header = findEventsHeader(col9);
+    if (header) {
+      header.classList.add("mujx-hidden");
+      const next = header.nextElementSibling;
+      if (next && next.tagName === "HR") next.classList.add("mujx-hidden");
+    }
+    if (ev && ev.parentElement) ev.parentElement.classList.add("mujx-hidden");
+  }
+  async function loadSummary(col9, ev) {
+    const body = mountSummary(col9, ev);
+    if (!body) return;
+    try {
+      const res = await slcmRequest("/Student/Academic/GetAttendanceSummaryList", {
+        body: { StudentCode: "" }
+      });
+      if (!body.isConnected) return;
+      if (renderSummaryTable(body, res?.data)) {
+        hidePortalEvents(col9, ev);
+      }
+    } catch {
+      if (!body.isConnected) return;
+      body.textContent = "";
+      const dangerNotice = document.createElement("div");
+      dangerNotice.className = "mujx-notice mujx-notice-danger";
+      dangerNotice.textContent = "Error loading attendance.";
+      body.appendChild(dangerNotice);
+    }
+  }
+  function renderSummaryTable(body, data) {
+    body.textContent = "";
+    const ok = data && data.IsSuccessfull === true && Array.isArray(data.AttendanceSummaryList);
+    const kind = ok ? data.ErrorMessage : null;
+    if (!ok || kind !== "UPCOMING" && kind !== "CLOSED") {
+      const secNotice = document.createElement("div");
+      secNotice.className = "mujx-notice mujx-notice-secondary";
+      secNotice.textContent = data && data.ErrorMessage === "OPEN" ? "The attendance summary is closed for now." : "No attendance data available.";
+      body.appendChild(secNotice);
+      return false;
+    }
+    const full = kind === "UPCOMING";
+    const rows = data.AttendanceSummaryList.slice();
+    if (full) {
+      rows.sort((a, b) => (parseFloat(b.Percentage) || 0) - (parseFloat(a.Percentage) || 0));
+    }
+    const table = document.createElement("table");
+    table.className = "table table-striped table-bordered table-hover mujx-table";
+    const thead = document.createElement("thead");
+    const trHead = document.createElement("tr");
+    const heads = full ? [
+      ["S. No.", 1],
+      ["Course Name", 0],
+      ["Present", 1],
+      ["Absent", 1],
+      ["Total", 1],
+      ["%", 1]
+    ] : [
+      ["S. No.", 1],
+      ["Course Name", 0],
+      ["Status", 0]
+    ];
+    heads.forEach(([title, center]) => {
+      const th = document.createElement("th");
+      if (center) th.className = "mujx-c";
+      th.textContent = title;
+      trHead.appendChild(th);
+    });
+    thead.appendChild(trHead);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    rows.forEach((it, i) => {
+      const tr = document.createElement("tr");
+      const tdNum = document.createElement("td");
+      tdNum.className = "mujx-c";
+      tdNum.textContent = String(i + 1);
+      tr.appendChild(tdNum);
+      const tdName = document.createElement("td");
+      tdName.textContent = it.CourseID ?? "";
+      tr.appendChild(tdName);
+      if (full) {
+        const tdP = document.createElement("td");
+        tdP.className = "mujx-c";
+        tdP.textContent = String(it.Present ?? 0);
+        tr.appendChild(tdP);
+        const tdA = document.createElement("td");
+        tdA.className = "mujx-c";
+        tdA.textContent = String(it.Absent ?? 0);
+        tr.appendChild(tdA);
+        const tdT = document.createElement("td");
+        tdT.className = "mujx-c";
+        tdT.textContent = String(it.Total ?? 0);
+        tr.appendChild(tdT);
+        const tdPct = document.createElement("td");
+        tdPct.className = "mujx-c";
+        tdPct.appendChild(makePctPill(it.Percentage));
+        tr.appendChild(tdPct);
+      } else {
+        const tdStatus = document.createElement("td");
+        tdStatus.textContent = it.Status ?? "";
+        tr.appendChild(tdStatus);
+      }
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    if (full) {
+      const below75 = rows.filter(
+        (it) => !isNaN(parseFloat(it.Percentage)) && parseFloat(it.Percentage) < 75
+      );
+      if (below75.length) {
+        const banner = document.createElement("div");
+        banner.className = "mujx-low-att-banner";
+        banner.innerHTML = `<strong>\u26A0\uFE0F ${below75.length} course${below75.length > 1 ? "s" : ""} below 75%</strong> \u2014 attend urgently to avoid debarment risk.`;
+        body.appendChild(banner);
+      }
+    }
+    body.appendChild(table);
+    return true;
+  }
+  function makePctPill(value) {
+    const n = parseFloat(value);
+    const cls = isNaN(n) ? "" : n < MIN_ATTENDANCE ? "mujx-bad" : n < MIN_ATTENDANCE + 5 ? "mujx-warn" : "mujx-ok";
+    const pill = document.createElement("span");
+    pill.className = `mujx-pill ${cls}`;
+    pill.textContent = value != null && value !== "" ? String(value) : "\u2013";
+    return pill;
+  }
+  function classifyEventColor(raw) {
+    let c = String(raw || "").replace("!important", "").trim().toLowerCase();
+    if (!/^#[0-9a-f]{3,8}$/.test(c)) c = "#6c6c6c";
+    switch (c) {
+      case "#3d9400":
+        return { color: c, bold: true, label: "Attendance Marked", detail: true };
+      case "#820c0c":
+        return { color: c, bold: true, label: "Rescheduled", detail: false };
+      case "#800000":
+        return { color: c, bold: true, label: "Cancelled", detail: false };
+      case "#6c6c6c":
+      case "#808080":
+        return { color: "#6c6c6c", bold: false, label: "Pending / Not Marked", detail: false };
+      default:
+        return { color: c, bold: true, label: "Scheduled Event", detail: true };
+    }
+  }
+  var pad = (n) => String(n).padStart(2, "0");
+  var apiDate = (d) => `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+  var sameDay = (a, b) => a.toDateString() === b.toDateString();
+  var fmtTime = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  function parseDate(v) {
+    if (v == null || v === "") return NaN;
+    const m = /\/Date\((-?\d+)/.exec(String(v));
+    return m ? Number(m[1]) : Date.parse(v);
+  }
+  function startTs(item) {
+    const v = parseDate(item && item.StartDate);
+    return isNaN(v) ? Infinity : v;
+  }
+  function byStart(a, b) {
+    const x = startTs(a);
+    const y = startTs(b);
+    return x === y ? 0 : x < y ? -1 : 1;
+  }
+  function timeRange(item) {
+    const s = parseDate(item.StartDate);
+    const e = parseDate(item.EndDate);
+    if (isNaN(s)) return "";
+    return isNaN(e) ? fmtTime(s) : `${fmtTime(s)} \u2013 ${fmtTime(e)}`;
+  }
+  async function runLimitedJobs(jobs, limit, signal) {
+    let i = 0;
+    const worker = async () => {
+      while (!signal?.aborted && i < jobs.length) {
+        const job = jobs[i++];
+        try {
+          await job();
+        } catch {
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, jobs.length) }, worker));
+  }
+  function cleanupDashboard() {
+    document.getElementById("mujx-dash-bar")?.remove();
+    document.getElementById("mujx-timetable")?.remove();
+    document.getElementById("mujx-summary-container")?.remove();
+    document.querySelectorAll(".mujx-hidden").forEach((el) => el.classList.remove("mujx-hidden"));
+  }
+
+  // src/ui/components/timetable/timetable-intelligence.js
+  var TIMETABLE_CSS = `
+  #slcm-loading-indicator {
+    position: fixed;
+    right: 76px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    max-width: calc(100vw - 92px);
+    padding: 5px 12px;
+    border-radius: 14px;
+    color: #fff;
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 2px 6px rgba(0,0,0,.25);
+    cursor: pointer;
+    user-select: none;
+    transition: opacity .3s, background .3s;
+  }
+  #slcm-loading-indicator:hover {
+    opacity: 1 !important;
+  }
+  /* Highlight Today's column */
+  #calendar .fc-today {
+    background: rgba(93, 120, 255, .07) !important;
+  }
+  #calendar .fc-today .fc-day-number {
+    background: #5d78ff;
+    color: #fff;
+    border-radius: 50%;
+    min-width: 22px;
+    height: 22px;
+    line-height: 22px;
+    display: inline-block;
+    text-align: center;
+    font-weight: 700;
+    padding: 0 2px;
+  }
+  /* Event styling */
+  #calendar .fc-event {
+    border-radius: 3px !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    padding: 2px 4px !important;
+    color: #fff !important;
+  }
+  #calendar .fc-event .fc-title,
+  #calendar .fc-event .fc-time {
+    color: #fff !important;
+  }
+  .box-attandance {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+`;
+  function injectStyles3() {
+    if (document.getElementById("mujx-tt-styles")) return;
+    const s = document.createElement("style");
+    s.id = "mujx-tt-styles";
+    s.setAttribute(INJECT_ATTR, "tt-styles");
+    s.textContent = TIMETABLE_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  }
+  function ensureMainWorldTimetable() {
+    if (document.getElementById("mujx-main-timetable-script")) return;
+    try {
+      const s = document.createElement("script");
+      s.id = "mujx-main-timetable-script";
+      s.src = chrome?.runtime?.getURL?.("src/content/timetable-main.js") || "";
+      if (s.src) {
+        (document.head || document.documentElement).appendChild(s);
+      }
+    } catch {
+    }
+  }
+  function enhanceTimetablePage({ prefs } = {}) {
+    const calendarEl = document.getElementById("calendar");
+    if (!calendarEl) return () => {
+    };
+    injectStyles3();
+    ensureMainWorldTimetable();
+    lockDrag();
+    return () => {
+      cleanupTimetableInjections();
+    };
+  }
+  function lockDrag() {
+    document.addEventListener(
+      "mousedown",
+      (e) => {
+        const t = e.target;
+        if (e.button === 0 && t && t.closest && t.closest("#calendar .fc-event")) {
+          e.stopPropagation();
+        }
+      },
+      true
+    );
+  }
+  function cleanupTimetableInjections() {
+    document.getElementById("mujx-custom-legends")?.remove();
+    document.querySelectorAll(`[${INJECT_ATTR}="tt-legend"]`).forEach((el) => el.remove());
+    document.getElementById("slcm-loading-indicator")?.remove();
+  }
+
+  // src/calculations/provisional-grade.js
+  var RELATIVE_GRADING_DISCLAIMER = "Important: SGPA and Grade Prediction Is Only an Estimate. MUJ follows a relative grading system. These predictions use the configured marks thresholds and available assessment data, so your final grades and SGPA may differ from the university's officially declared results. Do not treat the predicted SGPA as your final SGPA.";
+  var THEORY_GRADE_THRESHOLDS = Object.freeze([
+    { grade: "A+", min: 82, max: Infinity, condition: ">= 82" },
+    { grade: "A", min: 72, max: 82, condition: ">= 72 and < 82" },
+    { grade: "B", min: 62, max: 72, condition: ">= 62 and < 72" },
+    { grade: "C", min: 52, max: 62, condition: ">= 52 and < 62" },
+    { grade: "D", min: 42, max: 52, condition: ">= 42 and < 52" },
+    { grade: "E", min: 35.000001, max: 42, condition: "> 35 and < 42" },
+    { grade: "F", min: -Infinity, max: 35, condition: "< 35" }
+  ]);
+  var LAB_PBL_GRADE_THRESHOLDS = Object.freeze([
+    { grade: "A+", min: 90, max: Infinity, condition: ">= 90" },
+    { grade: "A", min: 80, max: 90, condition: ">= 80 and < 90" },
+    { grade: "B", min: 70, max: 80, condition: ">= 70 and < 80" },
+    { grade: "C", min: 60, max: 70, condition: ">= 60 and < 70" },
+    { grade: "D", min: 50, max: 60, condition: ">= 50 and < 60" },
+    { grade: "E", min: 35.000001, max: 50, condition: "> 35 and < 50" },
+    { grade: "F", min: -Infinity, max: 35, condition: "< 35" }
+  ]);
+  function classifyCourseType(course = {}) {
+    const name = String(course.courseName || course.subject || course.name || "").toUpperCase();
+    const code = String(course.courseCode || course.code || "").toUpperCase();
+    if (name.includes("PBL") || name.includes("PROJECT BASED LEARNING") || code.includes("PBL") || name.includes("PROJECT-BASED")) {
+      return "pbl";
+    }
+    if (name.includes("LAB") || name.includes("PRACTICAL") || name.includes("WORKSHOP") || name.includes("CLINIC") || code.endsWith("L") || code.endsWith("P") || /(?:103\d|213\d|313\d|323\d)/.test(code) || // MUJ lab course code convention (e.g. CSE1031, CSE2131)
+    course.prs !== void 0 && course.prs !== null && !course.mte && !course.mte1) {
+      return "lab";
+    }
+    return "theory";
+  }
+  function classifyProvisionalGrade(totalMarks, courseType = "theory") {
+    const normType = String(courseType || "theory").toLowerCase();
+    if (normType !== "theory" && normType !== "lab" && normType !== "pbl") {
+      return {
+        ok: false,
+        grade: null,
+        status: "unknown_type",
+        totalMarks: null,
+        courseType: normType,
+        minThreshold: null,
+        isBoundaryAmbiguous: false,
+        message: `Unknown course type '${courseType}'. Must be 'theory', 'lab', or 'pbl'.`,
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    if (totalMarks === null || totalMarks === void 0 || totalMarks === "") {
+      return {
+        ok: false,
+        grade: null,
+        status: "missing_marks",
+        totalMarks: null,
+        courseType: normType,
+        minThreshold: null,
+        isBoundaryAmbiguous: false,
+        message: "Marks value is missing or unavailable.",
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    const score = Number(totalMarks);
+    if (!Number.isFinite(score) || score < 0) {
+      return {
+        ok: false,
+        grade: null,
+        status: "invalid_marks",
+        totalMarks: score,
+        courseType: normType,
+        minThreshold: null,
+        isBoundaryAmbiguous: false,
+        message: `Invalid marks score (${totalMarks}).`,
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    if (Math.abs(score - 35) < 1e-9) {
+      return {
+        ok: false,
+        grade: null,
+        status: "undefined_boundary",
+        totalMarks: 35,
+        courseType: normType,
+        minThreshold: null,
+        isBoundaryAmbiguous: true,
+        message: "Score is exactly 35 marks. The university specification defines E as 'Above 35' and F as 'Below 35', leaving exactly 35 marks undefined.",
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    const isLabOrPbl = normType === "lab" || normType === "pbl";
+    if (isLabOrPbl) {
+      if (score >= 90) return result("A+", 90, normType, score);
+      if (score >= 80) return result("A", 80, normType, score);
+      if (score >= 70) return result("B", 70, normType, score);
+      if (score >= 60) return result("C", 60, normType, score);
+      if (score >= 50) return result("D", 50, normType, score);
+      if (score > 35 && score < 50) return result("E", 35.01, normType, score);
+      if (score < 35) return result("F", 0, normType, score);
+    } else {
+      if (score >= 82) return result("A+", 82, normType, score);
+      if (score >= 72) return result("A", 72, normType, score);
+      if (score >= 62) return result("B", 62, normType, score);
+      if (score >= 52) return result("C", 52, normType, score);
+      if (score >= 42) return result("D", 42, normType, score);
+      if (score > 35 && score < 42) return result("E", 35.01, normType, score);
+      if (score < 35) return result("F", 0, normType, score);
+    }
+    return {
+      ok: false,
+      grade: null,
+      status: "unresolved",
+      totalMarks: score,
+      courseType: normType,
+      minThreshold: null,
+      isBoundaryAmbiguous: true,
+      message: `Marks value ${score} could not be resolved.`,
+      disclaimer: RELATIVE_GRADING_DISCLAIMER
+    };
+  }
+  function result(grade, minThreshold, courseType, score) {
+    return {
+      ok: true,
+      grade,
+      status: "resolved",
+      totalMarks: score,
+      courseType,
+      minThreshold,
+      isBoundaryAmbiguous: false,
+      message: `Score ${score} classifies as provisional grade ${grade} (${courseType}).`,
+      disclaimer: RELATIVE_GRADING_DISCLAIMER
+    };
+  }
+
+  // src/calculations/rounding.js
+  function roundTo(value, digits = 2) {
+    if (!Number.isFinite(value)) return null;
+    const factor = 10 ** digits;
+    return Math.round((value + Number.EPSILON) * factor) / factor;
+  }
+
   // src/data/marks-adapter.js
   function extractMarksFromDocument(doc = document) {
     const tables = [...doc.querySelectorAll("table")];
+    for (const table of tables) {
+      const summary = parseInternalMarksSummaryTable(table);
+      if (summary.available && summary.courses.length) {
+        return {
+          records: summary.courses.map((c) => ({
+            subject: c.courseName,
+            courseCode: c.courseCode,
+            obtained: c.internalSubtotal,
+            component: "Internal Subtotal",
+            credits: c.credits,
+            letter: c.officialGrade,
+            ...c
+          })),
+          summary,
+          table,
+          source: "internal-marks-summary",
+          available: true
+        };
+      }
+    }
     const found = [];
     for (const table of tables) {
       const parsed = parseMarksTable(table);
@@ -698,6 +2486,110 @@
       groups: found,
       source: "dom",
       available: true
+    };
+  }
+  function parseInternalMarksSummaryTable(table) {
+    if (!table) return { available: false, courses: [], table: null };
+    const matrix = tableToMatrix(table);
+    const { headers, rows, headerRow, allRows, headerRowIndex } = matrix;
+    const map = headerIndexMap(headers);
+    const courseIdx = pickIndex(map, ["course name", "course", "subject", "paper name", "paper"]);
+    const codeIdx = pickIndex(map, ["course code", "code", "subject code"]);
+    const mte1Idx = pickIndex(map, ["mte1", "mte 1", "mid term 1", "midterm 1"]);
+    const mte2Idx = pickIndex(map, ["mte2", "mte 2", "mid term 2", "midterm 2"]);
+    let mteIdx = -1;
+    if (map["mte"] !== void 0) {
+      mteIdx = map["mte"];
+    } else if (map["mid term"] !== void 0) {
+      mteIdx = map["mid term"];
+    } else if (map["midterm"] !== void 0) {
+      mteIdx = map["midterm"];
+    } else if (mte1Idx < 0 && mte2Idx < 0) {
+      mteIdx = pickIndex(map, ["mte", "mid term", "midterm"]);
+    }
+    const cwsIdx = pickIndex(map, ["cws", "class work", "sessional", "sessionals", "cws marks"]);
+    const reSessionIdx = pickIndex(map, ["re-session", "resession", "re session"]);
+    const prsIdx = pickIndex(map, ["prs", "practical", "lab", "practical marks"]);
+    const totalIdx = pickIndex(map, ["total", "total marks", "internal total"]);
+    const creditIdx = pickIndex(map, ["credits", "credit", "cr"]);
+    const gradeIdx = pickIndex(map, ["grade", "letter grade", "official grade"]);
+    const hasMarksColumns = mte1Idx >= 0 || mteIdx >= 0 || cwsIdx >= 0 || prsIdx >= 0 || totalIdx >= 0;
+    if (courseIdx < 0 || !hasMarksColumns) {
+      return { available: false, courses: [], table };
+    }
+    const courses = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const cells of rows) {
+      if (!cells || !cells.length) continue;
+      const firstCell = (cells[0] || "").toLowerCase();
+      if (firstCell.includes("total") || cells.some((c) => c && c.toLowerCase() === "total")) {
+        continue;
+      }
+      const courseName = (courseIdx >= 0 ? cells[courseIdx] : "") || cells[0] || "";
+      const courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || "";
+      if (!courseName && !courseCode) continue;
+      const dedupeKey = `${courseCode || courseName}`.toUpperCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      const mte1 = mte1Idx >= 0 ? parseNumber(cells[mte1Idx]) : null;
+      const mte2 = mte2Idx >= 0 ? parseNumber(cells[mte2Idx]) : null;
+      const mteDirect = mteIdx >= 0 ? parseNumber(cells[mteIdx]) : null;
+      const reSession = reSessionIdx >= 0 ? parseNumber(cells[reSessionIdx]) : null;
+      const cws = cwsIdx >= 0 ? parseNumber(cells[cwsIdx]) : null;
+      const prs = prsIdx >= 0 ? parseNumber(cells[prsIdx]) : null;
+      const declaredTotal = totalIdx >= 0 ? parseNumber(cells[totalIdx]) : null;
+      const credits = creditIdx >= 0 ? parseNumber(cells[creditIdx]) : null;
+      const officialGrade = gradeIdx >= 0 && cells[gradeIdx] ? cells[gradeIdx].trim().toUpperCase() : null;
+      let mte = mteDirect;
+      if (mte === null) {
+        if (mte1 !== null && mte2 !== null) {
+          let bestMte1 = mte1;
+          let bestMte2 = mte2;
+          if (reSession !== null) {
+            if (mte1 < mte2) bestMte1 = Math.max(mte1, reSession);
+            else bestMte2 = Math.max(mte2, reSession);
+          }
+          mte = roundTo(bestMte1 + bestMte2, 2);
+        } else if (mte1 !== null) {
+          mte = reSession !== null ? Math.max(mte1, reSession) : mte1;
+        } else if (mte2 !== null) {
+          mte = reSession !== null ? Math.max(mte2, reSession) : mte2;
+        }
+      }
+      const courseType = classifyCourseType({ courseName, courseCode, prs, mte });
+      let internalSubtotal = 0;
+      if (courseType === "lab" || courseType === "pbl") {
+        internalSubtotal = prs !== null ? prs : declaredTotal !== null ? declaredTotal : 0;
+      } else {
+        internalSubtotal = (mte !== null ? mte : 0) + (cws !== null ? cws : 0);
+        if (internalSubtotal === 0 && declaredTotal !== null) {
+          internalSubtotal = declaredTotal;
+        }
+      }
+      courses.push({
+        id: `${courseCode || courseName}`,
+        courseCode,
+        courseName,
+        courseType,
+        mte1,
+        mte2,
+        mte,
+        reSession,
+        cws,
+        prs,
+        declaredTotal,
+        internalSubtotal: roundTo(internalSubtotal, 2),
+        credits: credits !== null ? credits : courseType === "lab" ? 1 : 4,
+        officialGrade: officialGrade || null
+      });
+    }
+    return {
+      available: courses.length > 0,
+      table,
+      courses,
+      headerRow,
+      allRows,
+      headerRowIndex
     };
   }
   function parseMarksTable(table) {
@@ -741,144 +2633,6 @@
     return table.closest(".card, .kt-portlet, .portlet")?.querySelector("h1,h2,h3,h4,.card-title,.kt-portlet__head-title")?.textContent?.trim() || "Course";
   }
 
-  // src/data/grades-adapter.js
-  function extractGradesFromDocument(doc = document) {
-    const tables = [...doc.querySelectorAll("table")];
-    for (const table of tables) {
-      const cgpaTable = parseCgpaSummaryTable(table);
-      if (cgpaTable) {
-        return {
-          records: [],
-          table,
-          source: "cgpa-summary-table",
-          available: true,
-          summary: cgpaTable
-        };
-      }
-    }
-    for (const table of tables) {
-      const parsed = parseGradesTable(table);
-      if (parsed.records.length) return parsed;
-    }
-    const summary = extractCgpaSummary(doc);
-    return { records: [], source: "dom", available: false, summary };
-  }
-  function parseCgpaSummaryTable(table) {
-    const text = (table.textContent || "").toLowerCase();
-    if (!text.includes("cgpa") || !text.includes("student") && !text.includes("registration")) {
-      return null;
-    }
-    const rows = [...table.querySelectorAll("tr")];
-    let cgpaColIdx = -1;
-    let totalColIdx = -1;
-    for (const row of rows) {
-      const cells = [...row.children];
-      cells.forEach((cell, idx) => {
-        const t = cell.textContent.trim().toLowerCase();
-        if (t === "cgpa") cgpaColIdx = idx;
-        if (t === "total" || t.includes("total credit")) totalColIdx = idx;
-      });
-      if (cgpaColIdx >= 0) break;
-    }
-    for (const row of rows) {
-      const cells = [...row.children];
-      if (cells.length < 5) continue;
-      const texts = cells.map((c) => c.textContent.trim());
-      const regNo = texts.find((t) => /^\d{8,12}$/.test(t));
-      if (regNo) {
-        const cgpa = cgpaColIdx >= 0 ? parseNumber(texts[cgpaColIdx]) : parseNumber(texts[3]);
-        const credits = totalColIdx >= 0 ? parseNumber(texts[totalColIdx]) : parseNumber(texts[4]);
-        const semesters = [];
-        const startIdx = Math.max(cgpaColIdx, totalColIdx) + 1;
-        for (let i = startIdx; i < texts.length - 1; i += 2) {
-          const sgpa = parseNumber(texts[i]);
-          const semCredits = parseNumber(texts[i + 1]);
-          if (sgpa !== null && semCredits !== null && semCredits > 0) {
-            semesters.push({ sgpa, credits: semCredits });
-          }
-        }
-        return {
-          table,
-          studentRow: row,
-          cgpa,
-          completedCredits: credits,
-          semesters,
-          available: cgpa !== null
-        };
-      }
-    }
-    return null;
-  }
-  function parseGradesTable(table) {
-    const matrix = tableToMatrix(table);
-    const { headers, rows, headerRow, allRows, headerRowIndex } = matrix;
-    const map = headerIndexMap(headers);
-    const letterIdx = pickIndex(map, ["grade", "letter", "lg"]);
-    const creditIdx = pickIndex(map, ["credit", "credits", "cr"]);
-    const subjectIdx = pickIndex(map, ["course name", "course", "subject", "paper name", "paper"]);
-    const codeIdx = pickIndex(map, ["course code", "code", "subject code"]);
-    const sessionIdx = pickIndex(map, ["academic session", "session"]);
-    if (letterIdx < 0 || creditIdx < 0) return { records: [], table, available: false };
-    const records = [];
-    let totalCreditsFromFooter = null;
-    for (const cells of rows) {
-      if (!cells || !cells.length) continue;
-      const firstNonEmpty = cells.find((c) => c && c.trim().length > 0) || "";
-      if (firstNonEmpty.toLowerCase().includes("total") || cells.some((c) => c.toLowerCase() === "total")) {
-        const nums = cells.map(parseNumber).filter((n) => n !== null);
-        if (nums.length) totalCreditsFromFooter = nums[nums.length - 1];
-        continue;
-      }
-      const cr = parseNumber(cells[creditIdx]);
-      const rawLetter = cells[letterIdx] ? cells[letterIdx].trim().toUpperCase() : null;
-      const subject = (subjectIdx >= 0 ? cells[subjectIdx] : "") || cells[2] || cells[1] || "";
-      const courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || cells[1] || "";
-      const session = sessionIdx >= 0 ? cells[sessionIdx] : "";
-      if (cr === null && !rawLetter) continue;
-      records.push(
-        normalizeGradeRow({
-          subject,
-          courseCode,
-          credits: cr,
-          letter: rawLetter,
-          session,
-          source: "dom"
-        })
-      );
-    }
-    const detectedSession = records.find((r) => r.session)?.session || records.find((r) => r.semester)?.semester || null;
-    return {
-      records,
-      table,
-      source: "dom",
-      available: records.length > 0,
-      totalCreditsFromFooter,
-      headerRow,
-      allRows,
-      headerRowIndex,
-      session: detectedSession
-    };
-  }
-  function extractCgpaSummary(doc = document) {
-    const text = doc.body?.innerText || "";
-    const cgpa = matchNumber(text, /c\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
-    const sgpa = matchNumber(text, /s\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
-    const credits = matchNumber(text, /((?:total|earned|completed)\s+credits?)\s*[:\-]*\s*([0-9]+(?:\.[0-9]+)?)/i, 2);
-    return {
-      cgpa,
-      sgpa,
-      completedCredits: credits,
-      source: "dom-text",
-      available: cgpa !== null || credits !== null
-    };
-  }
-  function matchNumber(text, regex, group = 1) {
-    const match = text.match(regex);
-    if (!match) return null;
-    const n = Number(match[group]);
-    return Number.isFinite(n) ? n : null;
-  }
-
   // src/calculations/grade-points.js
   var MUJ_GRADE_POINT_MAP = Object.freeze({
     "A+": 10,
@@ -911,13 +2665,6 @@
   function isNonEvaluativeGrade(grade) {
     const key = normalizeGrade(grade);
     return NON_EVALUATIVE_GRADES.includes(key);
-  }
-
-  // src/calculations/rounding.js
-  function roundTo(value, digits = 2) {
-    if (!Number.isFinite(value)) return null;
-    const factor = 10 ** digits;
-    return Math.round((value + Number.EPSILON) * factor) / factor;
   }
 
   // src/calculations/sgpa.js
@@ -1100,20 +2847,662 @@
     };
   }
   function computeSgpa(courses) {
-    const result = calculateSGPA(courses);
+    const result2 = calculateSGPA(courses);
     return {
-      ok: result.ok,
-      sgpa: result.sgpa,
-      credits: result.totalCredits,
-      gradedCredits: result.gradedCredits,
-      creditPoints: result.totalWeightedPoints,
-      included: result.courses.map((c) => ({
+      ok: result2.ok,
+      sgpa: result2.sgpa,
+      credits: result2.totalCredits,
+      gradedCredits: result2.gradedCredits,
+      creditPoints: result2.totalWeightedPoints,
+      included: result2.courses.map((c) => ({
         ...c,
         letter: c.grade,
         creditPoints: c.weightedPoints
       })),
-      issues: result.warnings
+      issues: result2.warnings
     };
+  }
+
+  // src/calculations/ete-required.js
+  var THEORY_TARGET_MIN_MARKS = Object.freeze({
+    "A+": 82,
+    A: 72,
+    B: 62,
+    C: 52,
+    D: 42,
+    E: 35.01,
+    F: 0
+  });
+  var DEFAULT_ETE_MAX = 40;
+  function calculateRequiredEte({
+    targetGrade,
+    mte,
+    cws = null,
+    cwsEstimate = null,
+    eteMax = DEFAULT_ETE_MAX,
+    courseType = "theory"
+  }) {
+    const normType = String(courseType || "theory").toLowerCase();
+    if (normType !== "theory") {
+      return {
+        ok: false,
+        eligible: false,
+        targetGrade,
+        targetThreshold: null,
+        mte: null,
+        cws: null,
+        cwsEstimated: false,
+        cwsPending: false,
+        internalSubtotal: 0,
+        requiredETE: null,
+        unclampedRequired: null,
+        eteMax,
+        feasibility: "ineligible",
+        percentOfEte: null,
+        message: `Course type is '${normType}'. The ETE Target Calculator is enabled exclusively for theory courses (labs and PBL are excluded).`,
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    const normGrade = String(targetGrade || "").trim().toUpperCase();
+    if (!(normGrade in THEORY_TARGET_MIN_MARKS)) {
+      return {
+        ok: false,
+        eligible: true,
+        targetGrade,
+        targetThreshold: null,
+        mte: null,
+        cws: null,
+        cwsEstimated: false,
+        cwsPending: false,
+        internalSubtotal: 0,
+        requiredETE: null,
+        unclampedRequired: null,
+        eteMax,
+        feasibility: "undefined_target",
+        percentOfEte: null,
+        message: `Unknown target grade '${targetGrade}'. Supported theory target grades: A+, A, B, C, D, E.`,
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    const targetThreshold = THEORY_TARGET_MIN_MARKS[normGrade];
+    const mteNum = Number(mte);
+    if (!Number.isFinite(mteNum) || mteNum < 0) {
+      return {
+        ok: false,
+        eligible: true,
+        targetGrade: normGrade,
+        targetThreshold,
+        mte: null,
+        cws: null,
+        cwsEstimated: false,
+        cwsPending: false,
+        internalSubtotal: 0,
+        requiredETE: null,
+        unclampedRequired: null,
+        eteMax,
+        feasibility: "invalid_input",
+        percentOfEte: null,
+        message: `MTE marks (${mte}) are invalid or missing.`,
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    const isCwsVerified = cws !== null && cws !== void 0 && Number.isFinite(Number(cws)) && Number(cws) >= 0;
+    const isCwsEstimated = !isCwsVerified && cwsEstimate !== null && Number.isFinite(Number(cwsEstimate)) && Number(cwsEstimate) >= 0;
+    const cwsPending = !isCwsVerified && !isCwsEstimated;
+    const effectiveCws = isCwsVerified ? Number(cws) : isCwsEstimated ? Number(cwsEstimate) : 0;
+    const internalSubtotal = roundTo(mteNum + effectiveCws, 2);
+    if (cwsPending) {
+      const requiredWithoutCws = targetThreshold - mteNum;
+      return {
+        ok: true,
+        eligible: true,
+        targetGrade: normGrade,
+        targetThreshold,
+        mte: mteNum,
+        cws: null,
+        cwsEstimated: false,
+        cwsPending: true,
+        internalSubtotal: mteNum,
+        requiredETE: null,
+        unclampedRequired: roundTo(requiredWithoutCws, 2),
+        eteMax,
+        feasibility: "cws_pending",
+        percentOfEte: null,
+        message: `CWS marks are pending. Need ${roundTo(requiredWithoutCws, 2)} total marks across (CWS + ETE) to achieve grade ${normGrade}. Enter a CWS estimate to calculate the ETE requirement.`,
+        disclaimer: RELATIVE_GRADING_DISCLAIMER
+      };
+    }
+    const unclampedRequired = targetThreshold - internalSubtotal;
+    let feasibility = "achievable";
+    let displayedRequired = 0;
+    let percentOfEte = 0;
+    if (unclampedRequired <= 0) {
+      feasibility = "already_secured";
+      displayedRequired = 0;
+      percentOfEte = 0;
+    } else if (unclampedRequired > eteMax) {
+      feasibility = "impossible";
+      displayedRequired = roundTo(unclampedRequired, 2);
+      percentOfEte = roundTo(displayedRequired / eteMax * 100, 1);
+    } else {
+      feasibility = "achievable";
+      displayedRequired = roundTo(unclampedRequired, 2);
+      percentOfEte = roundTo(displayedRequired / eteMax * 100, 1);
+    }
+    return {
+      ok: true,
+      eligible: true,
+      targetGrade: normGrade,
+      targetThreshold,
+      mte: mteNum,
+      cws: isCwsVerified ? effectiveCws : null,
+      cwsEstimated: isCwsEstimated,
+      cwsPending: false,
+      internalSubtotal,
+      requiredETE: displayedRequired,
+      unclampedRequired: roundTo(unclampedRequired, 2),
+      eteMax,
+      feasibility,
+      percentOfEte,
+      message: formatMessage(feasibility, displayedRequired, eteMax, normGrade, internalSubtotal, isCwsEstimated),
+      disclaimer: RELATIVE_GRADING_DISCLAIMER
+    };
+  }
+  function formatMessage(feasibility, req, max, grade, subtotal, estimated) {
+    const estNote = estimated ? " (based on estimated CWS)" : "";
+    if (feasibility === "already_secured") {
+      return `Grade ${grade} is already secured with current internal marks of ${subtotal}${estNote}! Required ETE: 0/${max}.`;
+    }
+    if (feasibility === "impossible") {
+      return `Grade ${grade} requires ${req}/${max} marks in ETE${estNote}, which exceeds the maximum possible score (${max}).`;
+    }
+    return `Target ${grade} requires ${req}/${max} marks in ETE (${Math.round(req / max * 100)}%)${estNote}.`;
+  }
+
+  // src/ui/components/marks/ete-target-control.js
+  var activePopover2 = null;
+  function openEteTargetPopover({ anchorEl, course, defaultTarget = "A" }) {
+    closeActiveEtePopover();
+    let currentTarget = defaultTarget;
+    let customCwsEstimate = null;
+    const popover = document.createElement("div");
+    popover.className = "mujx-ete-popover";
+    popover.setAttribute(INJECT_ATTR, "ete-popover");
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-label", "End Term Exam Target Calculator");
+    document.body.appendChild(popover);
+    activePopover2 = popover;
+    function render() {
+      const calc = calculateRequiredEte({
+        targetGrade: currentTarget,
+        mte: course.mte,
+        cws: course.cws,
+        cwsEstimate: customCwsEstimate,
+        eteMax: 40,
+        courseType: course.courseType || "theory"
+      });
+      const statusBadgeClass = calc.feasibility === "achievable" ? "safe" : calc.feasibility === "already_secured" ? "safe" : calc.feasibility === "impossible" ? "danger" : "warning";
+      const statusLabel = calc.feasibility === "achievable" ? "\u2713 Achievable" : calc.feasibility === "already_secured" ? "\u2605 Target Secured" : calc.feasibility === "impossible" ? "\u2715 Exceeds ETE Max" : calc.feasibility === "cws_pending" ? "\u2139 CWS Pending" : "Unresolved";
+      popover.innerHTML = `
+      <div class="mujx-popover-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; border-bottom:1px solid rgba(125,125,125,0.25); padding-bottom:8px;">
+        <div>
+          <div style="font-size:10px; text-transform:uppercase; font-weight:700; color:var(--mujx-accent, #2dd4bf); letter-spacing:0.04em;">
+            ETE Target Calculator
+          </div>
+          <div style="font-weight:700; font-size:13px; color:#ffffff; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(course.courseName)}">
+            ${escapeHtml(course.courseName)}
+          </div>
+        </div>
+        <button type="button" data-role="close-popover" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px; padding:2px 6px;">\u2715</button>
+      </div>
+
+      <!-- Target Grade Selection Buttons -->
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px; opacity:0.8; margin-bottom:5px; font-weight:600;">Select Target Grade:</div>
+        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+          ${["A+", "A", "B", "C", "D", "E"].map(
+        (g) => `
+                <button type="button" class="mujx-target-chip ${g === currentTarget ? "active" : ""}" data-grade="${g}" style="padding:4px 10px; font-size:11px; font-weight:700; border-radius:5px; cursor:pointer; border:1px solid ${g === currentTarget ? "var(--mujx-accent, #2dd4bf)" : "rgba(125,125,125,0.3)"}; background:${g === currentTarget ? "rgba(45,212,191,0.22)" : "rgba(255,255,255,0.06)"}; color:${g === currentTarget ? "var(--mujx-accent, #2dd4bf)" : "#e2e8f0"};">
+                  ${g}
+                </button>
+              `
+      ).join("")}
+        </div>
+      </div>
+
+      <!-- Internal Marks Breakdown -->
+      <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(125,125,125,0.2); border-radius:6px; padding:8px 10px; margin-bottom:10px; font-size:11.5px; display:flex; flex-direction:column; gap:4px;">
+        <div style="display:flex; justify-content:space-between;">
+          <span style="opacity:0.75;">Mid Term (MTE):</span>
+          <strong>${course.mte !== null ? `${course.mte} / 30` : "Not graded"}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="opacity:0.75;">Sessionals (CWS):</span>
+          <span>
+            ${course.cws !== null ? `<strong>${course.cws} / 30</strong>` : `<span style="color:#f59e0b; font-size:11px;">Pending</span>`}
+          </span>
+        </div>
+        ${course.cws === null ? `
+              <div style="margin-top:4px; padding-top:4px; border-top:1px dashed rgba(125,125,125,0.2); display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:11px; opacity:0.8;">CWS Estimate:</span>
+                <input type="number" min="0" max="30" placeholder="e.g. 24" value="${customCwsEstimate !== null ? customCwsEstimate : ""}" data-role="cws-estimate-input" style="width:65px; padding:2px 5px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.4); border:1px solid #0d9488; color:#fff;" />
+              </div>
+            ` : ""}
+        <div style="display:flex; justify-content:space-between; margin-top:2px; border-top:1px solid rgba(125,125,125,0.2); padding-top:4px;">
+          <span>Internal Subtotal:</span>
+          <strong style="color:var(--mujx-accent, #2dd4bf);">${calc.internalSubtotal}</strong>
+        </div>
+      </div>
+
+      <!-- Result Card -->
+      <div style="background:${calc.feasibility === "impossible" ? "rgba(244,63,94,0.12)" : "rgba(13,148,136,0.14)"}; border:1px solid ${calc.feasibility === "impossible" ? "rgba(244,63,94,0.35)" : "rgba(13,148,136,0.35)"}; border-radius:8px; padding:10px 12px; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Required in ETE</span>
+          <span class="mujx-chip ${statusBadgeClass}" style="font-size:10.5px; padding:2px 6px;">${statusLabel}</span>
+        </div>
+
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <span style="font-size:24px; font-weight:800; color:${calc.feasibility === "impossible" ? "#f43f5e" : "#2dd4bf"};">
+            ${calc.requiredETE !== null ? calc.requiredETE : "\u2014"}
+          </span>
+          <span style="font-size:13px; opacity:0.75;">/ ${calc.eteMax} marks</span>
+          ${calc.percentOfEte !== null ? `<span style="font-size:11.5px; opacity:0.8;">(${calc.percentOfEte}%)</span>` : ""}
+        </div>
+
+        <div style="font-size:11px; opacity:0.85; margin-top:6px; line-height:1.35;">
+          ${escapeHtml(calc.message)}
+        </div>
+      </div>
+
+      <!-- Disclaimer Footer -->
+      <div style="font-size:10px; opacity:0.65; line-height:1.3; border-top:1px dashed rgba(125,125,125,0.25); padding-top:6px;">
+        Assumes standard additive structure (MTE 30 + CWS 30 + ETE 40). Target thresholds are based on specified provisional boundaries. Official relative grading cohort cutoffs may vary.
+      </div>
+    `;
+      positionPopover2(popover, anchorEl);
+      popover.querySelectorAll("[data-grade]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          currentTarget = btn.dataset.grade;
+          render();
+        });
+      });
+      popover.querySelector("[data-role=close-popover]")?.addEventListener("click", () => {
+        closeActiveEtePopover();
+      });
+      const cwsInput = popover.querySelector("[data-role=cws-estimate-input]");
+      cwsInput?.addEventListener("input", (e) => {
+        const val = Number(e.target.value);
+        customCwsEstimate = Number.isFinite(val) && val >= 0 ? val : null;
+        render();
+      });
+    }
+    render();
+    const onKeydown = (e) => {
+      if (e.key === "Escape") closeActiveEtePopover();
+    };
+    const onPointerDown = (e) => {
+      if (!popover.contains(e.target) && !anchorEl.contains(e.target)) {
+        closeActiveEtePopover();
+      }
+    };
+    window.addEventListener("keydown", onKeydown);
+    setTimeout(() => window.addEventListener("pointerdown", onPointerDown), 10);
+    popover._cleanupListeners = () => {
+      window.removeEventListener("keydown", onKeydown);
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }
+  function closeActiveEtePopover() {
+    if (activePopover2) {
+      activePopover2._cleanupListeners?.();
+      activePopover2.remove();
+      activePopover2 = null;
+    }
+  }
+  function positionPopover2(popover, anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    const popoverWidth = 330;
+    let left = rect.left + window.scrollX;
+    let top = rect.bottom + window.scrollY + 6;
+    if (left + popoverWidth > window.innerWidth - 16) {
+      left = window.innerWidth - popoverWidth - 16;
+    }
+    if (left < 10) left = 10;
+    popover.style.position = "absolute";
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+    popover.style.width = `${popoverWidth}px`;
+    popover.style.zIndex = "99999";
+    popover.style.background = "#181b20";
+    popover.style.color = "#f1f5f9";
+    popover.style.border = "1px solid rgba(13, 148, 136, 0.4)";
+    popover.style.borderRadius = "10px";
+    popover.style.padding = "14px";
+    popover.style.boxShadow = "0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6)";
+    popover.style.boxSizing = "border-box";
+  }
+
+  // src/ui/components/marks/prediction-panel.js
+  function enhanceInternalMarksPage({ table, courses, headerRow, allRows, headerRowIndex }) {
+    if (!table || !courses || !courses.length) return () => {
+    };
+    const courseEteEstimates = {};
+    courses.forEach((c) => {
+      courseEteEstimates[c.id] = c.courseType === "theory" ? 28 : 25;
+    });
+    const theadRows = table.querySelectorAll("thead tr");
+    const actualHeaderRow = headerRow || (theadRows.length ? theadRows[theadRows.length - 1] : table.rows[0]);
+    if (!actualHeaderRow) return () => {
+    };
+    const rowsPool = allRows && allRows.length ? allRows.slice((headerRowIndex ?? 0) + 1) : table.tBodies.length ? [...table.tBodies].flatMap((body) => [...body.rows]) : [...table.rows].slice(1);
+    const courseRows = [];
+    for (const row of rowsPool) {
+      if (row === actualHeaderRow) continue;
+      const text = (row.textContent || "").toLowerCase();
+      if (text.includes("total")) continue;
+      if (row.cells && row.cells.length >= 3) {
+        courseRows.push(row);
+      }
+    }
+    document.querySelectorAll(`[${INJECT_ATTR}="marks-banner"]`).forEach((b) => b.remove());
+    const banner = document.createElement("div");
+    banner.className = "mujx-marks-banner";
+    banner.setAttribute(INJECT_ATTR, "marks-banner");
+    const insertTarget = table.closest(".table-responsive, .table-scrollable") || table;
+    insertTarget.parentNode?.insertBefore(banner, insertTarget);
+    const isTh = Boolean(actualHeaderRow.querySelector("th"));
+    const thPred = document.createElement(isTh ? "th" : "td");
+    thPred.textContent = "Predicted Grade";
+    thPred.setAttribute(INJECT_ATTR, "marks-pred-col");
+    thPred.title = "Provisional grade based on internal marks + estimated ETE";
+    thPred.style.fontWeight = "700";
+    thPred.style.textAlign = "center";
+    actualHeaderRow.append(thPred);
+    const thTarget = document.createElement(isTh ? "th" : "td");
+    thTarget.textContent = "ETE Calculator";
+    thTarget.setAttribute(INJECT_ATTR, "marks-target-col");
+    thTarget.title = "Calculate required ETE score for target grade";
+    thTarget.style.fontWeight = "700";
+    thTarget.style.textAlign = "center";
+    actualHeaderRow.append(thTarget);
+    const rowInjections = [];
+    courseRows.forEach((row, i) => {
+      if (i >= courses.length) return;
+      const course = courses[i];
+      const tdPred = document.createElement("td");
+      tdPred.setAttribute(INJECT_ATTR, "marks-pred-col");
+      tdPred.style.textAlign = "center";
+      tdPred.style.fontWeight = "600";
+      row.append(tdPred);
+      const tdTarget = document.createElement("td");
+      tdTarget.setAttribute(INJECT_ATTR, "marks-target-col");
+      tdTarget.style.textAlign = "center";
+      row.append(tdTarget);
+      rowInjections.push({ row, index: i, course, tdPred, tdTarget });
+    });
+    function render() {
+      const predictedCourseList = courses.map((course) => {
+        const estimatedEte = courseEteEstimates[course.id] ?? (course.courseType === "theory" ? 28 : 25);
+        const projectedTotal = course.internalSubtotal + estimatedEte;
+        const provisional = classifyProvisionalGrade(projectedTotal, course.courseType);
+        return {
+          ...course,
+          estimatedEte,
+          projectedTotal,
+          provisionalGrade: provisional.grade,
+          provisionalStatus: provisional.status,
+          grade: provisional.grade,
+          letter: provisional.grade
+        };
+      });
+      const sgpaResult = calculateSGPA(predictedCourseList);
+      const sgpaText = sgpaResult.ok && sgpaResult.sgpa !== null ? sgpaResult.sgpa.toFixed(2) : "\u2014";
+      banner.innerHTML = `
+      <!-- Prominent Relative-Grading Disclaimer -->
+      <div class="mujx-disclaimer-card" style="background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.35); border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:11.5px; line-height:1.45; color:#fde68a;">
+        <div style="font-weight:700; display:flex; align-items:center; gap:6px; color:#f59e0b; margin-bottom:3px; font-size:12px;">
+          <span>\u26A0\uFE0F</span>
+          <span>Important: SGPA and Grade Prediction Is Only an Estimate</span>
+        </div>
+        <div>
+          MUJ follows a <strong>relative grading system</strong>. These predictions use the configured marks thresholds and available internal assessment data, so your final grades and SGPA may differ from the university's officially declared results. Do not treat the predicted SGPA as your final SGPA.
+        </div>
+      </div>
+
+      <!-- Main Prediction Strip -->
+      <div class="mujx-grade-banner-main" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div class="mujx-grade-sgpa-pill" style="background:rgba(13,148,136,0.18); border:1px solid rgba(13,148,136,0.4); border-radius:8px; padding:6px 14px;">
+          <span class="mujx-grade-sgpa-label" style="font-size:10px; font-weight:700; color:#0d9488; letter-spacing:0.04em;">PREDICTED SGPA (FORECAST)</span>
+          <span class="mujx-grade-sgpa-value" style="font-size:24px; font-weight:800; color:#0d9488;">${sgpaText}</span>
+        </div>
+
+        <div class="mujx-grade-stats" style="display:flex; gap:16px; flex-wrap:wrap;">
+          <div class="mujx-grade-stat-item">
+            <span class="mujx-stat-num">${sgpaResult.totalCredits}</span>
+            <span class="mujx-stat-lbl">Total Credits</span>
+          </div>
+          <div class="mujx-grade-stat-item">
+            <span class="mujx-stat-num">${sgpaResult.evaluatedCount} / ${courses.length}</span>
+            <span class="mujx-stat-lbl">Predicted Courses</span>
+          </div>
+          <div class="mujx-grade-stat-item">
+            <span class="mujx-stat-num">${sgpaResult.totalWeightedPoints}</span>
+            <span class="mujx-stat-lbl">Total Points (\u03A3 Ci\xD7Gi)</span>
+          </div>
+        </div>
+
+        <!-- Global Scenario Controls -->
+        <div style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.25); border:1px solid rgba(125,125,125,0.25); border-radius:6px; padding:6px 10px;">
+          <span style="font-size:11px; opacity:0.8;">Global ETE Scenario:</span>
+          <input type="number" min="0" max="40" value="${courseEteEstimates[courses[0]?.id] ?? 28}" data-role="global-ete-input" style="width:48px; padding:3px 6px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.4); border:1px solid #0d9488; color:#fff;" title="Estimated score out of 40 in theory ETE" />
+          <span style="font-size:11px; opacity:0.7;">/ 40</span>
+          <button type="button" data-role="apply-global-ete" style="padding:4px 8px; font-size:11px; font-weight:600; background:#0d9488; color:#fff; border:none; border-radius:4px; cursor:pointer;">
+            Apply All
+          </button>
+        </div>
+      </div>
+    `;
+      const applyGlobalBtn = banner.querySelector("[data-role=apply-global-ete]");
+      const globalInput = banner.querySelector("[data-role=global-ete-input]");
+      applyGlobalBtn?.addEventListener("click", () => {
+        const val = Number(globalInput?.value);
+        if (Number.isFinite(val) && val >= 0) {
+          courses.forEach((c) => {
+            courseEteEstimates[c.id] = Math.min(val, c.courseType === "theory" ? 40 : 50);
+          });
+          render();
+        }
+      });
+      rowInjections.forEach(({ course, tdPred, tdTarget }) => {
+        const predCourse = predictedCourseList.find((p) => p.id === course.id);
+        const estEte = courseEteEstimates[course.id];
+        const provGrade = predCourse?.provisionalGrade || "\u2014";
+        const totalScore = predCourse?.projectedTotal;
+        tdPred.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+          <div style="display:inline-flex; align-items:center; gap:4px;">
+            <span style="font-size:13px; font-weight:800; color:var(--mujx-accent, #2dd4bf);">${provGrade}</span>
+            <span style="font-size:10px; opacity:0.7;">(${totalScore}/100)</span>
+          </div>
+          <div style="font-size:10.5px; opacity:0.7; display:flex; align-items:center; gap:2px;">
+            <span>ETE:</span>
+            <input type="number" min="0" max="40" value="${estEte}" data-course-ete="${course.id}" style="width:38px; padding:1px 3px; font-size:10px; border-radius:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.5); color:#fff; text-align:center;" />
+          </div>
+          ${course.officialGrade ? `<span style="font-size:9.5px; color:#10b981; font-weight:600;">Official: ${escapeHtml(course.officialGrade)}</span>` : ""}
+        </div>
+      `;
+        if (course.courseType === "theory") {
+          tdTarget.innerHTML = `
+          <button type="button" class="mujx-ete-target-btn" data-course-id="${course.id}" style="padding:4px 8px; font-size:11px; font-weight:600; border-radius:5px; background:rgba(13,148,136,0.15); border:1px solid rgba(13,148,136,0.4); color:var(--mujx-accent, #2dd4bf); cursor:pointer; white-space:nowrap;">
+            \u{1F3AF} ETE Target
+          </button>
+        `;
+          const btn = tdTarget.querySelector(`[data-course-id="${course.id}"]`);
+          btn?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openEteTargetPopover({ anchorEl: btn, course });
+          });
+        } else {
+          tdTarget.innerHTML = `<span style="font-size:10.5px; opacity:0.5;">Lab / PBL</span>`;
+        }
+        const rowEteInput = tdPred.querySelector(`[data-course-ete="${course.id}"]`);
+        rowEteInput?.addEventListener("change", (e) => {
+          const val = Number(e.target.value);
+          if (Number.isFinite(val) && val >= 0) {
+            courseEteEstimates[course.id] = val;
+            render();
+          }
+        });
+      });
+    }
+    render();
+    return () => {
+      banner.remove();
+      thPred.remove();
+      thTarget.remove();
+      rowInjections.forEach(({ tdPred, tdTarget }) => {
+        tdPred.remove();
+        tdTarget.remove();
+      });
+    };
+  }
+
+  // src/data/grades-adapter.js
+  function extractGradesFromDocument(doc = document) {
+    const tables = [...doc.querySelectorAll("table")];
+    for (const table of tables) {
+      const cgpaTable = parseCgpaSummaryTable(table);
+      if (cgpaTable) {
+        return {
+          records: [],
+          table,
+          source: "cgpa-summary-table",
+          available: true,
+          summary: cgpaTable
+        };
+      }
+    }
+    for (const table of tables) {
+      const parsed = parseGradesTable(table);
+      if (parsed.records.length) return parsed;
+    }
+    const summary = extractCgpaSummary(doc);
+    return { records: [], source: "dom", available: false, summary };
+  }
+  function parseCgpaSummaryTable(table) {
+    const text = (table.textContent || "").toLowerCase();
+    if (!text.includes("cgpa") || !text.includes("student") && !text.includes("registration")) {
+      return null;
+    }
+    const rows = [...table.querySelectorAll("tr")];
+    let cgpaColIdx = -1;
+    let totalColIdx = -1;
+    for (const row of rows) {
+      const cells = [...row.children];
+      cells.forEach((cell, idx) => {
+        const t = cell.textContent.trim().toLowerCase();
+        if (t === "cgpa") cgpaColIdx = idx;
+        if (t === "total" || t.includes("total credit")) totalColIdx = idx;
+      });
+      if (cgpaColIdx >= 0) break;
+    }
+    for (const row of rows) {
+      const cells = [...row.children];
+      if (cells.length < 5) continue;
+      const texts = cells.map((c) => c.textContent.trim());
+      const regNo = texts.find((t) => /^\d{8,12}$/.test(t));
+      if (regNo) {
+        const cgpa = cgpaColIdx >= 0 ? parseNumber(texts[cgpaColIdx]) : parseNumber(texts[3]);
+        const credits = totalColIdx >= 0 ? parseNumber(texts[totalColIdx]) : parseNumber(texts[4]);
+        const semesters = [];
+        const startIdx = Math.max(cgpaColIdx, totalColIdx) + 1;
+        for (let i = startIdx; i < texts.length - 1; i += 2) {
+          const sgpa = parseNumber(texts[i]);
+          const semCredits = parseNumber(texts[i + 1]);
+          if (sgpa !== null && semCredits !== null && semCredits > 0) {
+            semesters.push({ sgpa, credits: semCredits });
+          }
+        }
+        return {
+          table,
+          studentRow: row,
+          cgpa,
+          completedCredits: credits,
+          semesters,
+          available: cgpa !== null
+        };
+      }
+    }
+    return null;
+  }
+  function parseGradesTable(table) {
+    const matrix = tableToMatrix(table);
+    const { headers, rows, headerRow, allRows, headerRowIndex } = matrix;
+    const map = headerIndexMap(headers);
+    const letterIdx = pickIndex(map, ["grade", "letter", "lg"]);
+    const creditIdx = pickIndex(map, ["credit", "credits", "cr"]);
+    const subjectIdx = pickIndex(map, ["course name", "course", "subject", "paper name", "paper"]);
+    const codeIdx = pickIndex(map, ["course code", "code", "subject code"]);
+    const sessionIdx = pickIndex(map, ["academic session", "session"]);
+    if (letterIdx < 0 || creditIdx < 0) return { records: [], table, available: false };
+    const records = [];
+    let totalCreditsFromFooter = null;
+    for (const cells of rows) {
+      if (!cells || !cells.length) continue;
+      const firstNonEmpty = cells.find((c) => c && c.trim().length > 0) || "";
+      if (firstNonEmpty.toLowerCase().includes("total") || cells.some((c) => c.toLowerCase() === "total")) {
+        const nums = cells.map(parseNumber).filter((n) => n !== null);
+        if (nums.length) totalCreditsFromFooter = nums[nums.length - 1];
+        continue;
+      }
+      const cr = parseNumber(cells[creditIdx]);
+      const rawLetter = cells[letterIdx] ? cells[letterIdx].trim().toUpperCase() : null;
+      const subject = (subjectIdx >= 0 ? cells[subjectIdx] : "") || cells[2] || cells[1] || "";
+      const courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || cells[1] || "";
+      const session = sessionIdx >= 0 ? cells[sessionIdx] : "";
+      if (cr === null && !rawLetter) continue;
+      records.push(
+        normalizeGradeRow({
+          subject,
+          courseCode,
+          credits: cr,
+          letter: rawLetter,
+          session,
+          source: "dom"
+        })
+      );
+    }
+    const detectedSession = records.find((r) => r.session)?.session || records.find((r) => r.semester)?.semester || null;
+    return {
+      records,
+      table,
+      source: "dom",
+      available: records.length > 0,
+      totalCreditsFromFooter,
+      headerRow,
+      allRows,
+      headerRowIndex,
+      session: detectedSession
+    };
+  }
+  function extractCgpaSummary(doc = document) {
+    const text = doc.body?.innerText || "";
+    const cgpa = matchNumber(text, /c\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const sgpa = matchNumber(text, /s\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const credits = matchNumber(text, /((?:total|earned|completed)\s+credits?)\s*[:\-]*\s*([0-9]+(?:\.[0-9]+)?)/i, 2);
+    return {
+      cgpa,
+      sgpa,
+      completedCredits: credits,
+      source: "dom-text",
+      available: cgpa !== null || credits !== null
+    };
+  }
+  function matchNumber(text, regex, group = 1) {
+    const match = text.match(regex);
+    if (!match) return null;
+    const n = Number(match[group]);
+    return Number.isFinite(n) ? n : null;
   }
 
   // src/data/semester-adapter.js
@@ -1214,7 +3603,7 @@
     return conflicts;
   }
   function findGaps(events, now) {
-    const today = events.filter((event) => sameDay(event.startDate, now) && event.endDate);
+    const today = events.filter((event) => sameDay2(event.startDate, now) && event.endDate);
     const gaps = [];
     for (let i = 0; i < today.length - 1; i += 1) {
       const minutes = (today[i + 1].startDate - today[i].endDate) / 6e4;
@@ -1224,7 +3613,7 @@
     }
     return gaps;
   }
-  function sameDay(a, b) {
+  function sameDay2(a, b) {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
 
@@ -3211,6 +5600,16 @@
   var activeFloatingTab = "alerts";
   async function boot() {
     if (window[BOOT_FLAG]) return;
+    if (isLoginPage(document, location.href)) {
+      logInfo("login page detected, bypassing extension");
+      const unobserve = observePath(() => {
+        if (!isLoginPage(document, location.href)) {
+          unobserve();
+          boot();
+        }
+      });
+      return;
+    }
     window[BOOT_FLAG] = true;
     await mount();
     cleanups.push(observePath(() => remount()));
@@ -3236,10 +5635,16 @@
   }
   async function mount() {
     try {
+      if (isLoginPage(document, location.href)) {
+        logInfo("skipping login page in mount");
+        return;
+      }
       const prefs = await loadPreferences();
       const page = detectPage();
       logInfo("page detected", { kind: page.kind, reason: page.reason });
       if (page.kind === PAGE_KINDS.login) return;
+      syncThemeAttribute(document.documentElement);
+      cleanups.push(watchThemeChanges(() => syncThemeAttribute(document.documentElement)));
       const cache = await loadCache();
       const seed = extractSemesterContext();
       let attendance = extractAttendanceFromDocument();
@@ -3280,33 +5685,59 @@
         }
         return false;
       };
-      const isGradesPage = page.kind === PAGE_KINDS.grades || location.pathname.toLowerCase().includes("grade") || location.pathname.toLowerCase().includes("cgpaga") || location.pathname.toLowerCase().includes("examination") || hasGradeTableInDOM();
-      const isMarksPage = page.kind === PAGE_KINDS.marks;
-      if (prefs.features.attendance && !isGradesPage && !isMarksPage && attendance.available && attendance.table) {
-        const cleanup = injectColumn(attendance.table, {
-          key: "attendance-intel",
-          title: "MUJX Intel",
-          render: (td, row) => {
-            const cells = [...row.cells].map((cell) => cell.textContent);
-            const record = attendance.records.find((item) => cells.join(" ").includes(item.subject)) || {
-              subject: cells[1] || cells[0],
-              present: parseNumber(cells[cells.length - 3]),
-              total: parseNumber(cells[cells.length - 2])
-            };
-            renderAttendanceCell(td, record, prefs.attendanceThreshold, prefs.borderlineBand);
+      const hasMarksTableInDOM = () => {
+        const tables = document.querySelectorAll("table");
+        for (const t of tables) {
+          const text = (t.textContent || "").toLowerCase();
+          if ((text.includes("mte") || text.includes("cws") || text.includes("prs") || text.includes("internal mark")) && (text.includes("course") || text.includes("subject"))) {
+            return true;
           }
-        });
-        cleanups.push(cleanup);
-        cleanups.push(
-          observeTable(attendance.table, () => {
-            attendance = extractAttendanceFromDocument();
-            remount();
-          })
-        );
-        const enhanced = attendance.records.map(
-          (r) => enhanceRecord(r, prefs.attendanceThreshold, prefs.borderlineBand)
-        );
-        await recordAlertsIfAny(enhanced, snapshotChanged, marksChanged);
+        }
+        return false;
+      };
+      const isGradesPage = page.kind === PAGE_KINDS.grades || location.pathname.toLowerCase().includes("grade") || location.pathname.toLowerCase().includes("cgpaga") || location.pathname.toLowerCase().includes("examination") || hasGradeTableInDOM();
+      const isMarksPage = page.kind === PAGE_KINDS.marks || location.pathname.toLowerCase().includes("mark") || location.pathname.toLowerCase().includes("internalmark") || hasMarksTableInDOM();
+      const isHomePage = page.kind === PAGE_KINDS.home || location.pathname.toLowerCase().includes("dashboard") || Boolean(document.getElementById("kt_ViewEvent"));
+      const isTimetablePage = page.kind === PAGE_KINDS.timetable || location.pathname.toLowerCase().includes("timetable") || Boolean(document.getElementById("calendar"));
+      const isAttendancePage = page.kind === PAGE_KINDS.attendance || location.pathname.toLowerCase().includes("attendance");
+      if (prefs.features.homePanel && isHomePage) {
+        const dashCleanup = await mountAcademicDashboard({ container: document.body, prefs });
+        cleanups.push(dashCleanup);
+      }
+      if (prefs.features.attendance && !isGradesPage && !isMarksPage) {
+        if (isAttendancePage || document.getElementById("kt_ViewTable")) {
+          const attCleanup = mountAttendanceSummaryFeature(prefs);
+          cleanups.push(attCleanup);
+        } else if (attendance.available && attendance.table) {
+          const cleanup = injectColumn(attendance.table, {
+            key: "attendance-intel",
+            title: "MUJX Intel",
+            render: (td, row) => {
+              const cells = [...row.cells].map((cell) => cell.textContent);
+              const record = attendance.records.find((item) => cells.join(" ").includes(item.subject)) || {
+                subject: cells[1] || cells[0],
+                present: parseNumber(cells[cells.length - 3]),
+                total: parseNumber(cells[cells.length - 2])
+              };
+              renderAttendanceCell(td, record, prefs.attendanceThreshold, prefs.borderlineBand);
+            }
+          });
+          cleanups.push(cleanup);
+        }
+        if (attendance.available && attendance.table) {
+          cleanups.push(
+            observeTable(attendance.table, () => {
+              attendance = extractAttendanceFromDocument();
+              remount();
+            })
+          );
+        }
+        if (attendance.records?.length) {
+          const enhanced = attendance.records.map(
+            (r) => enhanceRecord(r, prefs.attendanceThreshold, prefs.borderlineBand)
+          );
+          await recordAlertsIfAny(enhanced, snapshotChanged, marksChanged);
+        }
       }
       if (isGradesPage) {
         enhanceGradesInline(prefs);
@@ -3339,9 +5770,40 @@
       }
       if (prefs.features.marks && isMarksPage) {
         enhanceMarksTableInline(marks, prefs);
+        const marksObserver = new MutationObserver((mutations) => {
+          const hasExternalChanges = mutations.some((m) => {
+            const target = m.target;
+            return !(target?.hasAttribute?.(INJECT_ATTR) || target?.closest?.(`[${INJECT_ATTR}]`));
+          });
+          if (hasExternalChanges) {
+            enhanceMarksTableInline(marks, prefs);
+          }
+        });
+        marksObserver.observe(document.body, { childList: true, subtree: true });
+        cleanups.push(() => marksObserver.disconnect());
+        const onMarksInteraction = (e) => {
+          const isInteractive = e.target.closest("button, input[type=submit], input[type=button], select, a, input");
+          if (isInteractive) {
+            setTimeout(() => enhanceMarksTableInline(marks, prefs), 100);
+            setTimeout(() => enhanceMarksTableInline(marks, prefs), 350);
+            setTimeout(() => enhanceMarksTableInline(marks, prefs), 800);
+            setTimeout(() => enhanceMarksTableInline(marks, prefs), 1600);
+          }
+        };
+        document.addEventListener("click", onMarksInteraction, true);
+        document.addEventListener("change", onMarksInteraction, true);
+        cleanups.push(() => {
+          document.removeEventListener("click", onMarksInteraction, true);
+          document.removeEventListener("change", onMarksInteraction, true);
+        });
       }
       if (prefs.features.timetable) {
-        highlightActiveTimetableSlot(timetable.events);
+        if (isTimetablePage) {
+          const ttCleanup = enhanceTimetablePage({ prefs });
+          cleanups.push(ttCleanup);
+        } else {
+          highlightActiveTimetableSlot(timetable.events);
+        }
       }
       mountFloatingHub(prefs, seed, snapshotChanged, attendance, marksChanged, timetable, marks);
       if (prefs.autoRefreshMinutes > 0) {
@@ -3421,11 +5883,41 @@
     }
   }
   function enhanceMarksTableInline(marks, prefs) {
-    if (!marks.available) return;
-    const tables = document.querySelectorAll("table");
-    for (const table of tables) {
+    const allTables = [
+      ...document.querySelectorAll("table"),
+      ...[...document.querySelectorAll("iframe")].flatMap((f) => {
+        try {
+          return [...f.contentDocument?.querySelectorAll("table") || []];
+        } catch {
+          return [];
+        }
+      })
+    ];
+    for (const table of allTables) {
       const text = (table.textContent || "").toLowerCase();
+      const summary = parseInternalMarksSummaryTable(table);
+      if (summary.available && summary.courses.length) {
+        const dataSig = summary.courses.map((c) => `${c.id}:${c.internalSubtotal}:${c.mte}:${c.cws}:${c.prs}:${c.credits}`).join(";");
+        if (table.getAttribute("data-mujx-marks-sig") === dataSig && table.querySelector(`[${INJECT_ATTR}="marks-pred-col"]`)) {
+          continue;
+        }
+        table.querySelectorAll(`[${INJECT_ATTR}]`).forEach((el) => el.remove());
+        table.closest(".table-responsive, .table-scrollable")?.parentNode?.querySelectorAll?.(`[${INJECT_ATTR}="marks-banner"]`)?.forEach((el) => el.remove());
+        table.parentNode?.querySelectorAll?.(`[${INJECT_ATTR}="marks-banner"]`)?.forEach((el) => el.remove());
+        document.querySelectorAll(`[${INJECT_ATTR}="marks-banner"]`).forEach((el) => el.remove());
+        table.setAttribute("data-mujx-marks-sig", dataSig);
+        const cleanup = enhanceInternalMarksPage({
+          table,
+          courses: summary.courses,
+          headerRow: summary.headerRow,
+          allRows: summary.allRows,
+          headerRowIndex: summary.headerRowIndex
+        });
+        cleanups.push(cleanup);
+        continue;
+      }
       if (text.includes("mark") || text.includes("component") || text.includes("obtained")) {
+        if (table.querySelector(`[${INJECT_ATTR}="marks-weight-intel"]`)) continue;
         const cleanup = injectColumn(table, {
           key: "marks-weight-intel",
           title: "Weightage & Target",
