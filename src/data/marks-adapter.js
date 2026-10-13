@@ -2,6 +2,7 @@ import { headerIndexMap, parseNumber, pickIndex, tableToMatrix } from "../shared
 import { normalizeMarkRow } from "./normalizers.js";
 import { classifyCourseType } from "../calculations/provisional-grade.js";
 import { roundTo } from "../calculations/rounding.js";
+import { inferCourseCredits } from "./credit-resolver.js";
 
 export function extractMarksFromDocument(doc = document) {
   const tables = [...doc.querySelectorAll("table")];
@@ -158,7 +159,7 @@ export function parseInternalMarksSummaryTable(table) {
       prs,
       declaredTotal,
       internalSubtotal: roundTo(internalSubtotal, 2),
-      credits: credits !== null ? credits : courseType === "lab" ? 1 : 4,
+      credits: credits !== null ? credits : inferCourseCredits(courseName, courseCode, courseType),
       officialGrade: officialGrade || null,
     });
   }

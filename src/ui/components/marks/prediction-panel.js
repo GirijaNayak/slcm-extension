@@ -50,9 +50,24 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
   const insertTarget = table.closest(".table-responsive, .table-scrollable") || table;
   insertTarget.parentNode?.insertBefore(banner, insertTarget);
 
-  // 2. Add header cells for Predicted Grade and ETE Actions
+  // 2. Add header cells for Credits (if not natively present), Predicted Grade and ETE Actions
   const isTh = Boolean(actualHeaderRow.querySelector("th"));
   
+  const hasNativeCreditCol = Array.from(actualHeaderRow.cells).some((c) =>
+    c.textContent.trim().toLowerCase().includes("credit") && !c.hasAttribute(INJECT_ATTR)
+  );
+
+  let thCredit = null;
+  if (!hasNativeCreditCol) {
+    thCredit = document.createElement(isTh ? "th" : "td");
+    thCredit.textContent = "Credits";
+    thCredit.setAttribute(INJECT_ATTR, "marks-credit-col");
+    thCredit.title = "Course credits (used for credit-weighted SGPA calculation)";
+    thCredit.style.fontWeight = "700";
+    thCredit.style.textAlign = "center";
+    actualHeaderRow.append(thCredit);
+  }
+
   const thPred = document.createElement(isTh ? "th" : "td");
   thPred.textContent = "Predicted Grade";
   thPred.setAttribute(INJECT_ATTR, "marks-pred-col");
@@ -75,6 +90,14 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
     if (i >= courses.length) return;
     const course = courses[i];
 
+    let tdCredit = null;
+    if (!hasNativeCreditCol) {
+      tdCredit = document.createElement("td");
+      tdCredit.setAttribute(INJECT_ATTR, "marks-credit-col");
+      tdCredit.style.textAlign = "center";
+      row.append(tdCredit);
+    }
+
     const tdPred = document.createElement("td");
     tdPred.setAttribute(INJECT_ATTR, "marks-pred-col");
     tdPred.style.textAlign = "center";
@@ -86,7 +109,7 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
     tdTarget.style.textAlign = "center";
     row.append(tdTarget);
 
-    rowInjections.push({ row, index: i, course, tdPred, tdTarget });
+    rowInjections.push({ row, index: i, course, tdPred, tdTarget, tdCredit });
   });
 
   function render() {
@@ -172,11 +195,39 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
     });
 
     // 4. Update Course Table Rows
-    rowInjections.forEach(({ course, tdPred, tdTarget }) => {
+    rowInjections.forEach(({ course, tdPred, tdTarget, tdCredit }) => {
       const predCourse = predictedCourseList.find((p) => p.id === course.id);
       const estEte = courseEteEstimates[course.id];
       const provGrade = predCourse?.provisionalGrade || "—";
       const totalScore = predCourse?.projectedTotal;
+
+      // Render Credits Selector if custom credits column injected
+      if (tdCredit) {
+        const crVal = course.credits ?? 3;
+        tdCredit.innerHTML = `
+          <select class="mujx-credit-dropdown" style="padding:2px 5px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.4); color:inherit; font-weight:700; cursor:pointer;" title="Adjust course credits">
+            <option value="1" ${crVal === 1 ? "selected" : ""}>1 cr</option>
+            <option value="2" ${crVal === 2 ? "selected" : ""}>2 cr</option>
+            <option value="3" ${crVal === 3 ? "selected" : ""}>3 cr</option>
+            <option value="4" ${crVal === 4 ? "selected" : ""}>4 cr</option>
+            <option value="0" ${crVal === 0 ? "selected" : ""}>0 cr</option>
+          </select>
+        `;
+        tdCredit.querySelector("select")?.addEventListener("change", (e) => {
+          const newCr = Number(e.target.value);
+          course.credits = newCr;
+          try {
+            if (typeof chrome !== "undefined" && chrome.storage?.local) {
+              const key = course.courseCode || course.id;
+              chrome.storage.local.get("courseCredits", (res) => {
+                const prev = res?.courseCredits || {};
+                chrome.storage.local.set({ courseCredits: { ...prev, [key]: newCr } });
+              });
+            }
+          } catch (_) {}
+          render();
+        });
+      }
 
       // Render Predicted Grade Cell
       tdPred.innerHTML = `
@@ -227,9 +278,11 @@ export function enhanceInternalMarksPage({ table, courses, headerRow, allRows, h
 
   return () => {
     banner.remove();
+    thCredit?.remove();
     thPred.remove();
     thTarget.remove();
-    rowInjections.forEach(({ tdPred, tdTarget }) => {
+    rowInjections.forEach(({ tdPred, tdTarget, tdCredit }) => {
+      tdCredit?.remove();
       tdPred.remove();
       tdTarget.remove();
     });

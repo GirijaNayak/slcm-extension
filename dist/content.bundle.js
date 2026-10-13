@@ -2452,6 +2452,175 @@
     return Math.round((value + Number.EPSILON) * factor) / factor;
   }
 
+  // src/data/grades-adapter.js
+  function extractGradesFromDocument(doc = document) {
+    const tables = [...doc.querySelectorAll("table")];
+    for (const table of tables) {
+      const cgpaTable = parseCgpaSummaryTable(table);
+      if (cgpaTable) {
+        return {
+          records: [],
+          table,
+          source: "cgpa-summary-table",
+          available: true,
+          summary: cgpaTable
+        };
+      }
+    }
+    for (const table of tables) {
+      const parsed = parseGradesTable(table);
+      if (parsed.records.length) return parsed;
+    }
+    const summary = extractCgpaSummary(doc);
+    return { records: [], source: "dom", available: false, summary };
+  }
+  function parseCgpaSummaryTable(table) {
+    const text = (table.textContent || "").toLowerCase();
+    if (!text.includes("cgpa") || !text.includes("student") && !text.includes("registration")) {
+      return null;
+    }
+    const rows = [...table.querySelectorAll("tr")];
+    let cgpaColIdx = -1;
+    let totalColIdx = -1;
+    for (const row of rows) {
+      const cells = [...row.children];
+      cells.forEach((cell, idx) => {
+        const t = cell.textContent.trim().toLowerCase();
+        if (t === "cgpa") cgpaColIdx = idx;
+        if (t === "total" || t.includes("total credit")) totalColIdx = idx;
+      });
+      if (cgpaColIdx >= 0) break;
+    }
+    for (const row of rows) {
+      const cells = [...row.children];
+      if (cells.length < 5) continue;
+      const texts = cells.map((c) => c.textContent.trim());
+      const regNo = texts.find((t) => /^\d{8,12}$/.test(t));
+      if (regNo) {
+        const cgpa = cgpaColIdx >= 0 ? parseNumber(texts[cgpaColIdx]) : parseNumber(texts[3]);
+        const credits = totalColIdx >= 0 ? parseNumber(texts[totalColIdx]) : parseNumber(texts[4]);
+        const semesters = [];
+        const startIdx = Math.max(cgpaColIdx, totalColIdx) + 1;
+        for (let i = startIdx; i < texts.length - 1; i += 2) {
+          const sgpa = parseNumber(texts[i]);
+          const semCredits = parseNumber(texts[i + 1]);
+          if (sgpa !== null && semCredits !== null && semCredits > 0) {
+            semesters.push({ sgpa, credits: semCredits });
+          }
+        }
+        return {
+          table,
+          studentRow: row,
+          cgpa,
+          completedCredits: credits,
+          semesters,
+          available: cgpa !== null
+        };
+      }
+    }
+    return null;
+  }
+  function parseGradesTable(table) {
+    const matrix = tableToMatrix(table);
+    const { headers, rows, headerRow, allRows, headerRowIndex } = matrix;
+    const map = headerIndexMap(headers);
+    const letterIdx = pickIndex(map, ["grade", "letter", "lg"]);
+    const creditIdx = pickIndex(map, ["credit", "credits", "cr"]);
+    const subjectIdx = pickIndex(map, ["course name", "course", "subject", "paper name", "paper"]);
+    const codeIdx = pickIndex(map, ["course code", "code", "subject code"]);
+    const sessionIdx = pickIndex(map, ["academic session", "session"]);
+    if (letterIdx < 0 || creditIdx < 0) return { records: [], table, available: false };
+    const records = [];
+    let totalCreditsFromFooter = null;
+    for (const cells of rows) {
+      if (!cells || !cells.length) continue;
+      const firstNonEmpty = cells.find((c) => c && c.trim().length > 0) || "";
+      if (firstNonEmpty.toLowerCase().includes("total") || cells.some((c) => c.toLowerCase() === "total")) {
+        const nums = cells.map(parseNumber).filter((n) => n !== null);
+        if (nums.length) totalCreditsFromFooter = nums[nums.length - 1];
+        continue;
+      }
+      const cr = parseNumber(cells[creditIdx]);
+      const rawLetter = cells[letterIdx] ? cells[letterIdx].trim().toUpperCase() : null;
+      const subject = (subjectIdx >= 0 ? cells[subjectIdx] : "") || cells[2] || cells[1] || "";
+      const courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || cells[1] || "";
+      const session = sessionIdx >= 0 ? cells[sessionIdx] : "";
+      if (cr === null && !rawLetter) continue;
+      records.push(
+        normalizeGradeRow({
+          subject,
+          courseCode,
+          credits: cr,
+          letter: rawLetter,
+          session,
+          source: "dom"
+        })
+      );
+    }
+    const detectedSession = records.find((r) => r.session)?.session || records.find((r) => r.semester)?.semester || null;
+    return {
+      records,
+      table,
+      source: "dom",
+      available: records.length > 0,
+      totalCreditsFromFooter,
+      headerRow,
+      allRows,
+      headerRowIndex,
+      session: detectedSession
+    };
+  }
+  function extractCgpaSummary(doc = document) {
+    const text = doc.body?.innerText || "";
+    const cgpa = matchNumber(text, /c\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const sgpa = matchNumber(text, /s\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const credits = matchNumber(text, /((?:total|earned|completed)\s+credits?)\s*[:\-]*\s*([0-9]+(?:\.[0-9]+)?)/i, 2);
+    return {
+      cgpa,
+      sgpa,
+      completedCredits: credits,
+      source: "dom-text",
+      available: cgpa !== null || credits !== null
+    };
+  }
+  function matchNumber(text, regex, group = 1) {
+    const match = text.match(regex);
+    if (!match) return null;
+    const n = Number(match[group]);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // src/data/credit-resolver.js
+  function inferCourseCredits(courseName = "", courseCode = "", courseType = "theory") {
+    const name = courseName.toLowerCase();
+    const code = courseCode.toUpperCase();
+    if (name.includes("project-based learning 2") || name.includes("pbl 2") || code === "CSE2270") {
+      return 2;
+    }
+    if (name.includes("project-based learning 1") || name.includes("pbl 1") || code === "CSE1270") {
+      return 1;
+    }
+    if (name.includes("creativity & innovation") || name.includes("creativity and innovation") || code === "MEE1007") {
+      return 2;
+    }
+    if (name.includes("technical writing") || code.startsWith("LLC")) {
+      return 1;
+    }
+    if (courseType === "lab" || name.includes("lab") || name.includes("practical") || /(?:30|31|32|33|34|35|36|37|38|39)$/.test(code)) {
+      return 1;
+    }
+    if (code === "CSE2201" || // Design and Analysis of Algorithm
+    code === "CSE2240" || // Automata and Compiler Design
+    code === "MAS1001" || // Calculus & Matrices
+    code === "CHY1001" || // Engineering Chemistry
+    code === "EEE1002" || // Electrical & Electronics Systems
+    code === "PHY1001" || // Engineering Physics
+    name.includes("calculus") || name.includes("automata") || name.includes("design and analysis of algorithm")) {
+      return 4;
+    }
+    return 3;
+  }
+
   // src/data/marks-adapter.js
   function extractMarksFromDocument(doc = document) {
     const tables = [...doc.querySelectorAll("table")];
@@ -2585,7 +2754,7 @@
         prs,
         declaredTotal,
         internalSubtotal: roundTo(internalSubtotal, 2),
-        credits: credits !== null ? credits : courseType === "lab" ? 1 : 4,
+        credits: credits !== null ? credits : inferCourseCredits(courseName, courseCode, courseType),
         officialGrade: officialGrade || null
       });
     }
@@ -3217,6 +3386,19 @@
     const insertTarget = table.closest(".table-responsive, .table-scrollable") || table;
     insertTarget.parentNode?.insertBefore(banner, insertTarget);
     const isTh = Boolean(actualHeaderRow.querySelector("th"));
+    const hasNativeCreditCol = Array.from(actualHeaderRow.cells).some(
+      (c) => c.textContent.trim().toLowerCase().includes("credit") && !c.hasAttribute(INJECT_ATTR)
+    );
+    let thCredit = null;
+    if (!hasNativeCreditCol) {
+      thCredit = document.createElement(isTh ? "th" : "td");
+      thCredit.textContent = "Credits";
+      thCredit.setAttribute(INJECT_ATTR, "marks-credit-col");
+      thCredit.title = "Course credits (used for credit-weighted SGPA calculation)";
+      thCredit.style.fontWeight = "700";
+      thCredit.style.textAlign = "center";
+      actualHeaderRow.append(thCredit);
+    }
     const thPred = document.createElement(isTh ? "th" : "td");
     thPred.textContent = "Predicted Grade";
     thPred.setAttribute(INJECT_ATTR, "marks-pred-col");
@@ -3235,6 +3417,13 @@
     courseRows.forEach((row, i) => {
       if (i >= courses.length) return;
       const course = courses[i];
+      let tdCredit = null;
+      if (!hasNativeCreditCol) {
+        tdCredit = document.createElement("td");
+        tdCredit.setAttribute(INJECT_ATTR, "marks-credit-col");
+        tdCredit.style.textAlign = "center";
+        row.append(tdCredit);
+      }
       const tdPred = document.createElement("td");
       tdPred.setAttribute(INJECT_ATTR, "marks-pred-col");
       tdPred.style.textAlign = "center";
@@ -3244,7 +3433,7 @@
       tdTarget.setAttribute(INJECT_ATTR, "marks-target-col");
       tdTarget.style.textAlign = "center";
       row.append(tdTarget);
-      rowInjections.push({ row, index: i, course, tdPred, tdTarget });
+      rowInjections.push({ row, index: i, course, tdPred, tdTarget, tdCredit });
     });
     function render() {
       const predictedCourseList = courses.map((course) => {
@@ -3319,11 +3508,38 @@
           render();
         }
       });
-      rowInjections.forEach(({ course, tdPred, tdTarget }) => {
+      rowInjections.forEach(({ course, tdPred, tdTarget, tdCredit }) => {
         const predCourse = predictedCourseList.find((p) => p.id === course.id);
         const estEte = courseEteEstimates[course.id];
         const provGrade = predCourse?.provisionalGrade || "\u2014";
         const totalScore = predCourse?.projectedTotal;
+        if (tdCredit) {
+          const crVal = course.credits ?? 3;
+          tdCredit.innerHTML = `
+          <select class="mujx-credit-dropdown" style="padding:2px 5px; font-size:11px; border-radius:4px; background:rgba(0,0,0,0.3); border:1px solid rgba(13,148,136,0.4); color:inherit; font-weight:700; cursor:pointer;" title="Adjust course credits">
+            <option value="1" ${crVal === 1 ? "selected" : ""}>1 cr</option>
+            <option value="2" ${crVal === 2 ? "selected" : ""}>2 cr</option>
+            <option value="3" ${crVal === 3 ? "selected" : ""}>3 cr</option>
+            <option value="4" ${crVal === 4 ? "selected" : ""}>4 cr</option>
+            <option value="0" ${crVal === 0 ? "selected" : ""}>0 cr</option>
+          </select>
+        `;
+          tdCredit.querySelector("select")?.addEventListener("change", (e) => {
+            const newCr = Number(e.target.value);
+            course.credits = newCr;
+            try {
+              if (typeof chrome !== "undefined" && chrome.storage?.local) {
+                const key = course.courseCode || course.id;
+                chrome.storage.local.get("courseCredits", (res) => {
+                  const prev = res?.courseCredits || {};
+                  chrome.storage.local.set({ courseCredits: { ...prev, [key]: newCr } });
+                });
+              }
+            } catch (_) {
+            }
+            render();
+          });
+        }
         tdPred.innerHTML = `
         <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
           <div style="display:inline-flex; align-items:center; gap:4px;">
@@ -3364,151 +3580,15 @@
     render();
     return () => {
       banner.remove();
+      thCredit?.remove();
       thPred.remove();
       thTarget.remove();
-      rowInjections.forEach(({ tdPred, tdTarget }) => {
+      rowInjections.forEach(({ tdPred, tdTarget, tdCredit }) => {
+        tdCredit?.remove();
         tdPred.remove();
         tdTarget.remove();
       });
     };
-  }
-
-  // src/data/grades-adapter.js
-  function extractGradesFromDocument(doc = document) {
-    const tables = [...doc.querySelectorAll("table")];
-    for (const table of tables) {
-      const cgpaTable = parseCgpaSummaryTable(table);
-      if (cgpaTable) {
-        return {
-          records: [],
-          table,
-          source: "cgpa-summary-table",
-          available: true,
-          summary: cgpaTable
-        };
-      }
-    }
-    for (const table of tables) {
-      const parsed = parseGradesTable(table);
-      if (parsed.records.length) return parsed;
-    }
-    const summary = extractCgpaSummary(doc);
-    return { records: [], source: "dom", available: false, summary };
-  }
-  function parseCgpaSummaryTable(table) {
-    const text = (table.textContent || "").toLowerCase();
-    if (!text.includes("cgpa") || !text.includes("student") && !text.includes("registration")) {
-      return null;
-    }
-    const rows = [...table.querySelectorAll("tr")];
-    let cgpaColIdx = -1;
-    let totalColIdx = -1;
-    for (const row of rows) {
-      const cells = [...row.children];
-      cells.forEach((cell, idx) => {
-        const t = cell.textContent.trim().toLowerCase();
-        if (t === "cgpa") cgpaColIdx = idx;
-        if (t === "total" || t.includes("total credit")) totalColIdx = idx;
-      });
-      if (cgpaColIdx >= 0) break;
-    }
-    for (const row of rows) {
-      const cells = [...row.children];
-      if (cells.length < 5) continue;
-      const texts = cells.map((c) => c.textContent.trim());
-      const regNo = texts.find((t) => /^\d{8,12}$/.test(t));
-      if (regNo) {
-        const cgpa = cgpaColIdx >= 0 ? parseNumber(texts[cgpaColIdx]) : parseNumber(texts[3]);
-        const credits = totalColIdx >= 0 ? parseNumber(texts[totalColIdx]) : parseNumber(texts[4]);
-        const semesters = [];
-        const startIdx = Math.max(cgpaColIdx, totalColIdx) + 1;
-        for (let i = startIdx; i < texts.length - 1; i += 2) {
-          const sgpa = parseNumber(texts[i]);
-          const semCredits = parseNumber(texts[i + 1]);
-          if (sgpa !== null && semCredits !== null && semCredits > 0) {
-            semesters.push({ sgpa, credits: semCredits });
-          }
-        }
-        return {
-          table,
-          studentRow: row,
-          cgpa,
-          completedCredits: credits,
-          semesters,
-          available: cgpa !== null
-        };
-      }
-    }
-    return null;
-  }
-  function parseGradesTable(table) {
-    const matrix = tableToMatrix(table);
-    const { headers, rows, headerRow, allRows, headerRowIndex } = matrix;
-    const map = headerIndexMap(headers);
-    const letterIdx = pickIndex(map, ["grade", "letter", "lg"]);
-    const creditIdx = pickIndex(map, ["credit", "credits", "cr"]);
-    const subjectIdx = pickIndex(map, ["course name", "course", "subject", "paper name", "paper"]);
-    const codeIdx = pickIndex(map, ["course code", "code", "subject code"]);
-    const sessionIdx = pickIndex(map, ["academic session", "session"]);
-    if (letterIdx < 0 || creditIdx < 0) return { records: [], table, available: false };
-    const records = [];
-    let totalCreditsFromFooter = null;
-    for (const cells of rows) {
-      if (!cells || !cells.length) continue;
-      const firstNonEmpty = cells.find((c) => c && c.trim().length > 0) || "";
-      if (firstNonEmpty.toLowerCase().includes("total") || cells.some((c) => c.toLowerCase() === "total")) {
-        const nums = cells.map(parseNumber).filter((n) => n !== null);
-        if (nums.length) totalCreditsFromFooter = nums[nums.length - 1];
-        continue;
-      }
-      const cr = parseNumber(cells[creditIdx]);
-      const rawLetter = cells[letterIdx] ? cells[letterIdx].trim().toUpperCase() : null;
-      const subject = (subjectIdx >= 0 ? cells[subjectIdx] : "") || cells[2] || cells[1] || "";
-      const courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || cells[1] || "";
-      const session = sessionIdx >= 0 ? cells[sessionIdx] : "";
-      if (cr === null && !rawLetter) continue;
-      records.push(
-        normalizeGradeRow({
-          subject,
-          courseCode,
-          credits: cr,
-          letter: rawLetter,
-          session,
-          source: "dom"
-        })
-      );
-    }
-    const detectedSession = records.find((r) => r.session)?.session || records.find((r) => r.semester)?.semester || null;
-    return {
-      records,
-      table,
-      source: "dom",
-      available: records.length > 0,
-      totalCreditsFromFooter,
-      headerRow,
-      allRows,
-      headerRowIndex,
-      session: detectedSession
-    };
-  }
-  function extractCgpaSummary(doc = document) {
-    const text = doc.body?.innerText || "";
-    const cgpa = matchNumber(text, /c\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
-    const sgpa = matchNumber(text, /s\.?g\.?p\.?a\.?\s*[:\-is]*\s*([0-9]+(?:\.[0-9]+)?)/i);
-    const credits = matchNumber(text, /((?:total|earned|completed)\s+credits?)\s*[:\-]*\s*([0-9]+(?:\.[0-9]+)?)/i, 2);
-    return {
-      cgpa,
-      sgpa,
-      completedCredits: credits,
-      source: "dom-text",
-      available: cgpa !== null || credits !== null
-    };
-  }
-  function matchNumber(text, regex, group = 1) {
-    const match = text.match(regex);
-    if (!match) return null;
-    const n = Number(match[group]);
-    return Number.isFinite(n) ? n : null;
   }
 
   // src/data/semester-adapter.js
