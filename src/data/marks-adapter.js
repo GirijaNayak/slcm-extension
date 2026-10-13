@@ -90,8 +90,14 @@ export function parseInternalMarksSummaryTable(table) {
       continue;
     }
 
-    const courseName = (courseIdx >= 0 ? cells[courseIdx] : "") || cells[0] || "";
-    const courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || "";
+    let courseName = (courseIdx >= 0 ? cells[courseIdx] : "") || cells[0] || "";
+    let courseCode = (codeIdx >= 0 ? cells[codeIdx] : "") || "";
+    if (!courseCode && courseName) {
+      const match = courseName.match(/\(([A-Za-z0-9\-\/]{4,12})\)/);
+      if (match) {
+        courseCode = match[1].trim().toUpperCase();
+      }
+    }
     if (!courseName && !courseCode) continue;
 
     const dedupeKey = `${courseCode || courseName}`.toUpperCase();

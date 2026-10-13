@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Premium, non-destructive Chrome extension that enhances the MUJ SLCM portal in place.",
   "scripts": {
-    "build": "esbuild src/content/bootstrap.js --bundle --outfile=dist/content.bundle.js --format=iife",
+    "build": "esbuild src/content/bootstrap.js --bundle --outfile=dist/content.bundle.js --format=iife && esbuild src/content/grades-entry.js --bundle --outfile=dist/grades.bundle.js --format=iife && esbuild src/content/marks-entry.js --bundle --outfile=dist/marks.bundle.js --format=iife",
     "build:watch": "esbuild src/content/bootstrap.js --bundle --outfile=dist/content.bundle.js --format=iife --watch",
     "test": "node --test tests/*.test.js",
     "test:watch": "node --test --watch tests/*.test.js"
