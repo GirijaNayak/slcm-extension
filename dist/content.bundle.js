@@ -13,7 +13,8 @@
       targetCgpa: true,
       timetable: true,
       notifications: true,
-      homePanel: true
+      homePanel: true,
+      feedbackAssistant: true
     },
     attendanceThreshold: 75,
     borderlineBand: 5,
@@ -29,6 +30,18 @@
       ete: 40
     },
     absoluteGradeBoundaries: []
+  });
+  var DEFAULT_FEEDBACK_PREFERENCES = Object.freeze({
+    defaultYesNo: "YES",
+    // "YES" or "NO"
+    defaultDropdownStrategy: "highest_positive",
+    // "highest_positive" (Strongly Agree / Agree / 5-star) or exact text
+    defaultComment: "The course was well structured and classes were conducted regularly with clear explanations.",
+    fillComments: true,
+    preserveExistingComments: true,
+    preserveExistingAnswers: false,
+    overrides: {}
+    // normalized question text -> answer ("YES", "NO", "Strongly Agree", etc.)
   });
   var MUJ_GRADE_POINTS = Object.freeze({
     "A+": 10,
@@ -58,6 +71,7 @@
     marks: "marks",
     grades: "grades",
     timetable: "timetable",
+    feedback: "feedback",
     other: "other"
   });
   var STORAGE_KEYS = Object.freeze({
@@ -66,7 +80,10 @@
     notifications: "mujx.notifications",
     dismissed: "mujx.dismissed",
     timetableSnapshot: "mujx.timetableSnapshot",
-    hubState: "mujx.hubState"
+    hubState: "mujx.hubState",
+    feedbackPreferences: "mujx.feedbackPreferences",
+    feedbackDrafts: "mujx.feedbackDrafts",
+    feedbackTracker: "mujx.feedbackTracker"
   });
 
   // src/content/page-detector.js
@@ -78,7 +95,7 @@
     } catch {
       path = String(href || "").toLowerCase();
     }
-    if (path.startsWith("/student") || path.includes("/home/dashboard") || path.includes("/academic") || path.includes("/examination")) {
+    if (path.startsWith("/student") || path.includes("/home/dashboard") || path.includes("/academic") || path.includes("/examination") || path.includes("/feedback")) {
       return false;
     }
     if (doc.querySelector?.(".kt-header__topbar-username") || doc.querySelector?.(".kt-aside__brand") || doc.querySelector?.(".kt-header") || doc.querySelector?.("#kt_header") || doc.querySelector?.("a[href*='Logout' i]") || doc.querySelector?.("a[href*='logout' i]") || doc.querySelector?.("a[href*='SignOut' i]")) {
@@ -107,6 +124,9 @@
     const title = (doc.title || "").toLowerCase();
     const heading = collectHeadings(doc);
     const body = `${title} ${heading} ${path}`;
+    if (matches(body, ["feedback", "questionnaire", "survey", "evaluation"]) || /feedback|questionnaire/.test(path)) {
+      return { kind: PAGE_KINDS.feedback, reason: "path-or-heading" };
+    }
     if (matches(body, ["attendance", "attendence"]) || /attendance/.test(path)) {
       return { kind: PAGE_KINDS.attendance, reason: "path-or-heading" };
     }
@@ -5868,6 +5888,247 @@
     }
   }
 
+  // src/feedback/storage/feedback-storage.js
+  async function loadFeedbackPreferences() {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        const data = await chrome.storage.local.get(STORAGE_KEYS.feedbackPreferences);
+        const stored = data?.[STORAGE_KEYS.feedbackPreferences];
+        if (stored && typeof stored === "object") {
+          return {
+            ...DEFAULT_FEEDBACK_PREFERENCES,
+            ...stored,
+            overrides: {
+              ...DEFAULT_FEEDBACK_PREFERENCES.overrides || {},
+              ...stored.overrides || {}
+            }
+          };
+        }
+      }
+    } catch (err) {
+      logError("failed to load feedback preferences", err);
+    }
+    return { ...DEFAULT_FEEDBACK_PREFERENCES, overrides: { ...DEFAULT_FEEDBACK_PREFERENCES.overrides } };
+  }
+  async function saveFeedbackPreferences(prefs) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        await chrome.storage.local.set({
+          [STORAGE_KEYS.feedbackPreferences]: prefs
+        });
+        logInfo("saved feedback preferences", prefs);
+        return true;
+      }
+    } catch (err) {
+      logError("failed to save feedback preferences", err);
+    }
+    return false;
+  }
+  async function resetFeedbackPreferences() {
+    return saveFeedbackPreferences({ ...DEFAULT_FEEDBACK_PREFERENCES });
+  }
+  async function loadFeedbackTracker() {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        const data = await chrome.storage.local.get(STORAGE_KEYS.feedbackTracker);
+        return data?.[STORAGE_KEYS.feedbackTracker] || { courses: [], lastUpdated: null };
+      }
+    } catch (err) {
+      logError("failed to load feedback tracker", err);
+    }
+    return { courses: [], lastUpdated: null };
+  }
+
+  // src/feedback/ui/feedback-preferences-modal.js
+  async function openFeedbackPreferencesModal({ onSaved = null } = {}) {
+    closeExistingModal();
+    const currentPrefs = await loadFeedbackPreferences();
+    const backdrop = document.createElement("div");
+    backdrop.className = "mujx-modal-backdrop";
+    backdrop.setAttribute(INJECT_ATTR, "feedback-prefs-modal");
+    backdrop.innerHTML = `
+    <div class="mujx-modal-card" role="dialog" aria-label="Feedback Preferences">
+      <div class="mujx-modal-head">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">\u2699\uFE0F</span>
+          <div>
+            <h3 style="margin:0; font-size:15px; font-weight:700; color:var(--mujx-ink, #fff);">Feedback Preferences</h3>
+            <span style="font-size:11px; opacity:0.75;">Configure one-click answer defaults &amp; question overrides</span>
+          </div>
+        </div>
+        <button type="button" data-role="close-btn" class="mujx-modal-close" style="background:none; border:none; color:var(--mujx-muted, #94a3b8); font-size:16px; cursor:pointer; padding:4px 8px;">\u2715</button>
+      </div>
+
+      <div class="mujx-modal-body" style="max-height:65vh; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:16px;">
+        
+        <!-- Global YES/NO Preference -->
+        <div class="mujx-form-group">
+          <label style="font-size:12px; font-weight:700; display:block; margin-bottom:6px;">Default YES/NO Selection</label>
+          <div style="display:flex; gap:10px;">
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+              <input type="radio" name="mujx_pref_yesno" value="YES" ${currentPrefs.defaultYesNo === "YES" ? "checked" : ""}>
+              <span>YES (Recommended for regular classes &amp; positive reviews)</span>
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+              <input type="radio" name="mujx_pref_yesno" value="NO" ${currentPrefs.defaultYesNo === "NO" ? "checked" : ""}>
+              <span>NO</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Dropdown Preference Strategy -->
+        <div class="mujx-form-group">
+          <label style="font-size:12px; font-weight:700; display:block; margin-bottom:6px;">Default Dropdown &amp; Rating Strategy</label>
+          <select id="mujx_pref_dropdown" class="mujx-select" style="width:100%; padding:7px 10px; border-radius:6px; background:#121826; border:1px solid #2d2d3f; color:#f1f5f9; font-size:12.5px;">
+            <option value="highest_positive" ${currentPrefs.defaultDropdownStrategy === "highest_positive" ? "selected" : ""}>Highest Positive Agreement (Strongly Agree / 5 Stars)</option>
+            <option value="agree" ${currentPrefs.defaultDropdownStrategy === "agree" ? "selected" : ""}>Moderate Agreement (Agree / 4 Stars)</option>
+          </select>
+          <span style="font-size:10.5px; opacity:0.7; margin-top:4px; display:block;">Automatically selects the most constructive response for course relevance, satisfaction, and rating scales.</span>
+        </div>
+
+        <!-- Comments & Suggestions Textarea Preference -->
+        <div class="mujx-form-group">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <label style="font-size:12px; font-weight:700;">Default Comment / Suggestions</label>
+            <label style="font-size:11px; display:inline-flex; align-items:center; gap:4px; cursor:pointer;">
+              <input type="checkbox" id="mujx_pref_fill_comments" ${currentPrefs.fillComments ? "checked" : ""}>
+              <span>Fill Comments Field</span>
+            </label>
+          </div>
+          <textarea id="mujx_pref_comment_text" rows="3" style="width:100%; padding:8px 10px; border-radius:6px; background:#121826; border:1px solid #2d2d3f; color:#f1f5f9; font-size:12px; resize:vertical;">${escapeHtml(currentPrefs.defaultComment || "")}</textarea>
+        </div>
+
+        <!-- Preservation Toggles -->
+        <div class="mujx-form-group" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:10px 14px; display:flex; flex-direction:column; gap:8px;">
+          <label style="font-size:12px; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="mujx_pref_preserve_answers" ${currentPrefs.preserveExistingAnswers ? "checked" : ""}>
+            <span>Preserve already-answered questions (Do not overwrite)</span>
+          </label>
+          <label style="font-size:12px; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="mujx_pref_preserve_comments" ${currentPrefs.preserveExistingComments ? "checked" : ""}>
+            <span>Preserve manually written comments (Never overwrite student notes)</span>
+          </label>
+        </div>
+
+        <!-- Question Overrides Section -->
+        <div class="mujx-form-group">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <label style="font-size:12px; font-weight:700;">Individual Question Overrides</label>
+            <span style="font-size:10.5px; opacity:0.7;">Override answers for specific questions</span>
+          </div>
+
+          <div id="mujx_overrides_list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+            ${renderOverridesList(currentPrefs.overrides)}
+          </div>
+
+          <!-- Add New Override -->
+          <div style="display:flex; gap:6px; align-items:center; background:#121826; padding:8px; border-radius:6px; border:1px dashed #2d2d3f;">
+            <input type="text" id="mujx_new_override_q" placeholder="e.g. Effective time management during class" style="flex:1; padding:5px 8px; font-size:11.5px; background:none; border:1px solid #2d2d3f; border-radius:4px; color:#fff;" />
+            <select id="mujx_new_override_val" style="padding:5px 8px; font-size:11.5px; background:#1e1e2d; border:1px solid #2d2d3f; border-radius:4px; color:#fff;">
+              <option value="YES">YES</option>
+              <option value="NO">NO</option>
+              <option value="Strongly Agree">Strongly Agree</option>
+              <option value="Agree">Agree</option>
+              <option value="Neutral">Neutral</option>
+              <option value="Disagree">Disagree</option>
+            </select>
+            <button type="button" id="mujx_add_override_btn" style="padding:5px 10px; font-size:11.5px; font-weight:700; background:var(--mujx-accent, #0d9488); border:none; border-radius:4px; color:#fff; cursor:pointer;">+ Add</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="mujx-modal-foot" style="padding:14px 20px; border-top:1px solid #2d2d3f; display:flex; justify-content:space-between; align-items:center; background:#121826;">
+        <button type="button" id="mujx_reset_defaults_btn" style="background:none; border:none; color:#f43f5e; font-size:12px; cursor:pointer; text-decoration:underline;">Reset to Defaults</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" data-role="close-btn" style="padding:7px 14px; font-size:12px; font-weight:600; border-radius:6px; background:#2d2d3f; border:none; color:#fff; cursor:pointer;">Cancel</button>
+          <button type="button" id="mujx_save_prefs_btn" style="padding:7px 16px; font-size:12px; font-weight:700; border-radius:6px; background:var(--mujx-accent, #0d9488); border:none; color:#fff; cursor:pointer; box-shadow:0 2px 6px rgba(13,148,136,0.3);">Save Preferences</button>
+        </div>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(backdrop);
+    const workingOverrides = { ...currentPrefs.overrides || {} };
+    backdrop.querySelectorAll('[data-role="close-btn"]').forEach((btn) => {
+      btn.addEventListener("click", closeExistingModal);
+    });
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) closeExistingModal();
+    });
+    const addBtn = backdrop.querySelector("#mujx_add_override_btn");
+    const newQInput = backdrop.querySelector("#mujx_new_override_q");
+    const newValSelect = backdrop.querySelector("#mujx_new_override_val");
+    const listEl = backdrop.querySelector("#mujx_overrides_list");
+    addBtn.addEventListener("click", () => {
+      const qText = (newQInput.value || "").trim();
+      const qVal = newValSelect.value;
+      if (qText) {
+        workingOverrides[qText] = qVal;
+        newQInput.value = "";
+        listEl.innerHTML = renderOverridesList(workingOverrides);
+        attachRemoveListeners(listEl, workingOverrides);
+      }
+    });
+    attachRemoveListeners(listEl, workingOverrides);
+    backdrop.querySelector("#mujx_reset_defaults_btn")?.addEventListener("click", async () => {
+      if (confirm("Reset all feedback answer preferences back to defaults?")) {
+        await resetFeedbackPreferences();
+        closeExistingModal();
+        if (onSaved) onSaved();
+      }
+    });
+    backdrop.querySelector("#mujx_save_prefs_btn")?.addEventListener("click", async () => {
+      const yesNoChoice = backdrop.querySelector('input[name="mujx_pref_yesno"]:checked')?.value || "YES";
+      const dropdownStrategy = backdrop.querySelector("#mujx_pref_dropdown")?.value || "highest_positive";
+      const fillComments = Boolean(backdrop.querySelector("#mujx_pref_fill_comments")?.checked);
+      const commentText = backdrop.querySelector("#mujx_pref_comment_text")?.value || "";
+      const preserveAnswers = Boolean(backdrop.querySelector("#mujx_pref_preserve_answers")?.checked);
+      const preserveComments = Boolean(backdrop.querySelector("#mujx_pref_preserve_comments")?.checked);
+      const updated = {
+        defaultYesNo: yesNoChoice,
+        defaultDropdownStrategy: dropdownStrategy,
+        fillComments,
+        defaultComment: commentText,
+        preserveExistingAnswers: preserveAnswers,
+        preserveExistingComments: preserveComments,
+        overrides: workingOverrides
+      };
+      await saveFeedbackPreferences(updated);
+      closeExistingModal();
+      if (onSaved) onSaved(updated);
+    });
+  }
+  function renderOverridesList(overrides) {
+    const entries = Object.entries(overrides || {});
+    if (entries.length === 0) {
+      return `<div style="font-size:11px; opacity:0.5; font-style:italic;">No question overrides configured.</div>`;
+    }
+    return entries.map(
+      ([q, val]) => `
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#121826; padding:5px 8px; border-radius:4px; font-size:11.5px; border:1px solid #2d2d3f;">
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px;" title="${escapeHtml(q)}">${escapeHtml(q)}</span>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-weight:700; color:var(--mujx-accent, #2dd4bf); font-size:10.5px;">${escapeHtml(val)}</span>
+          <button type="button" data-del-override="${escapeHtml(q)}" style="background:none; border:none; color:#f43f5e; cursor:pointer; font-size:12px;">\u2715</button>
+        </div>
+      </div>
+    `
+    ).join("");
+  }
+  function attachRemoveListeners(listEl, workingOverrides) {
+    listEl.querySelectorAll("[data-del-override]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const k = btn.dataset.delOverride;
+        delete workingOverrides[k];
+        listEl.innerHTML = renderOverridesList(workingOverrides);
+        attachRemoveListeners(listEl, workingOverrides);
+      });
+    });
+  }
+  function closeExistingModal() {
+    document.querySelectorAll(`[${INJECT_ATTR}="feedback-prefs-modal"]`).forEach((el) => el.remove());
+  }
+
   // src/content/bootstrap.js
   var cleanups = [];
   var activeFloatingTab = "alerts";
@@ -6301,6 +6562,9 @@
         <button class="mujx-tab-btn ${activeFloatingTab === "timetable" ? "active" : ""}" type="button" role="tab" data-tab="timetable">
           \u{1F4C5} Timetable
         </button>
+        <button class="mujx-tab-btn ${activeFloatingTab === "feedback" ? "active" : ""}" type="button" role="tab" data-tab="feedback">
+          \u26A1 Feedback
+        </button>
         <button class="mujx-tab-btn ${activeFloatingTab === "settings" ? "active" : ""}" type="button" role="tab" data-tab="settings">
           \u2699\uFE0F Settings
         </button>
@@ -6400,9 +6664,68 @@
           </div>
         `;
         }
+      } else if (activeFloatingTab === "feedback") {
+        renderFeedbackTab(body);
       } else if (activeFloatingTab === "settings") {
         renderSettingsTab(body, prefs);
       }
+    };
+    const renderFeedbackTab = async (container) => {
+      container.innerHTML = `<div style="padding:16px; text-align:center; color:#94a3b8;">Loading feedback status...</div>`;
+      const tracker = await loadFeedbackTracker();
+      const courses = tracker.courses || [];
+      const pending = courses.filter((c) => c.status === "Pending");
+      const completed = courses.filter((c) => c.status === "Completed");
+      container.innerHTML = `
+      <div style="padding:4px 0; display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h4 class="mujx-title" style="font-size:14px; margin:0; font-weight:700;">Course Feedback Tracker</h4>
+            <span style="font-size:11px; color:#94a3b8;">${courses.length ? `${completed.length} completed, ${pending.length} pending` : "Open Feedback page to track"}</span>
+          </div>
+          <button type="button" id="mujx_hub_fb_prefs_btn" style="padding:4px 10px; font-size:11px; font-weight:600; border-radius:5px; background:#1e1e2d; border:1px solid #2d2d3f; color:#2dd4bf; cursor:pointer;">
+            \u2699\uFE0F Prefs
+          </button>
+        </div>
+
+        ${courses.length === 0 ? `
+          <div class="mujx-empty" style="text-align:center; padding:18px 10px;">
+            <div style="font-size:24px; margin-bottom:6px;">\u26A1</div>
+            <strong>No Course Feedback Scanned Yet</strong>
+            <p class="mujx-sub" style="font-size:11.5px; color:#94a3b8; margin:6px 0 10px;">
+              Navigate to the university Feedback page to automatically track courses and unlock one-click filling.
+            </p>
+            <a href="/Student/Academic/FeedbackForStudent" class="mujx-btn primary" style="display:inline-block; text-decoration:none; padding:6px 12px; font-size:11.5px; border-radius:6px; background:var(--mujx-accent); color:#fff;">
+              Go to Feedback Page \u2192
+            </a>
+          </div>
+        ` : `
+          <div style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto;">
+            ${courses.map((c) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#121826; padding:8px 10px; border-radius:6px; border:1px solid #2d2d3f;">
+                <div style="min-width:0; flex:1;">
+                  <div style="font-size:12px; font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${c.courseName}">${c.courseName}</div>
+                  <div style="font-size:10.5px; color:#94a3b8;">${c.courseCode} ${c.faculty ? `\u2022 ${c.faculty}` : ""}</div>
+                </div>
+                <span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; background:${c.status === "Completed" ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)"}; color:${c.status === "Completed" ? "#34d399" : "#fbbf24"}; margin-left:8px; white-space:nowrap;">
+                  ${c.status}
+                </span>
+              </div>
+            `).join("")}
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed #2d2d3f; padding-top:8px;">
+            <span style="font-size:11px; color:#94a3b8;">One-Click Feedback Assistant active on forms</span>
+            <a href="/Student/Academic/FeedbackForStudent" style="font-size:11.5px; color:var(--mujx-accent); text-decoration:none; font-weight:600;">
+              Open Feedback \u2192
+            </a>
+          </div>
+        `}
+      </div>
+    `;
+      container.querySelector("#mujx_hub_fb_prefs_btn")?.addEventListener("click", () => {
+        openFeedbackPreferencesModal();
+      });
     };
     const renderSettingsTab = (container, currentPrefs) => {
       container.innerHTML = `

@@ -1151,3 +1151,79 @@ th[data-mujx="attendance-intel"], td[data-mujx="attendance-intel"] {
   gap: 6px;
 }
 
+
+/* ==========================================================================
+   MUJX Feedback Assistant & Modal Styling
+   ========================================================================== */
+
+.mujx-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  animation: mujx-fade-in 0.15s ease;
+}
+
+@keyframes mujx-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mujx-modal-card {
+  width: 100%;
+  max-width: 540px;
+  background: #1e1e2d;
+  border: 1px solid #2d2d3f;
+  border-radius: 14px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  color: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  animation: mujx-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mujx-modal-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid #2d2d3f;
+  background: #121826;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Pulsing highlight for unanswered questions or submit button */
+.mujx-highlight-unanswered {
+  animation: mujx-pulse-highlight 1.2s ease-in-out infinite alternate !important;
+  outline: 3px solid #f59e0b !important;
+  outline-offset: 4px !important;
+  border-radius: 6px !important;
+}
+
+@keyframes mujx-pulse-highlight {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+    background-color: rgba(245, 158, 11, 0.08);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(245, 158, 11, 0);
+    background-color: rgba(245, 158, 11, 0.2);
+  }
+}
+
+.mujx-feedback-min-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px -4px rgba(13, 148, 136, 0.65) !important;
+}
+
+.mujx-feedback-card button:hover {
+  filter: brightness(1.08);
+}

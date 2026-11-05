@@ -36,6 +36,8 @@ import { renderTimetablePanel } from "../ui/components/timetable/panel.js";
 import { buildAcademicAlerts, renderNotifications } from "../ui/components/notifications/panel.js";
 import { syncThemeAttribute, watchThemeChanges } from "../shared/theme.js";
 import { logError, logInfo } from "../shared/logger.js";
+import { loadFeedbackTracker } from "../feedback/storage/feedback-storage.js";
+import { openFeedbackPreferencesModal } from "../feedback/ui/feedback-preferences-modal.js";
 
 const cleanups = [];
 let activeFloatingTab = "alerts";
@@ -593,6 +595,9 @@ async function mountFloatingHub(prefs, seed, snapshotChanged, attendance, marksC
         <button class="mujx-tab-btn ${activeFloatingTab === 'timetable' ? 'active' : ''}" type="button" role="tab" data-tab="timetable">
           📅 Timetable
         </button>
+        <button class="mujx-tab-btn ${activeFloatingTab === 'feedback' ? 'active' : ''}" type="button" role="tab" data-tab="feedback">
+          ⚡ Feedback
+        </button>
         <button class="mujx-tab-btn ${activeFloatingTab === 'settings' ? 'active' : ''}" type="button" role="tab" data-tab="settings">
           ⚙️ Settings
         </button>
@@ -696,9 +701,71 @@ async function mountFloatingHub(prefs, seed, snapshotChanged, attendance, marksC
           </div>
         `;
       }
+    } else if (activeFloatingTab === "feedback") {
+      renderFeedbackTab(body);
     } else if (activeFloatingTab === "settings") {
       renderSettingsTab(body, prefs);
     }
+  };
+
+  const renderFeedbackTab = async (container) => {
+    container.innerHTML = `<div style="padding:16px; text-align:center; color:#94a3b8;">Loading feedback status...</div>`;
+    const tracker = await loadFeedbackTracker();
+    const courses = tracker.courses || [];
+    const pending = courses.filter((c) => c.status === "Pending");
+    const completed = courses.filter((c) => c.status === "Completed");
+
+    container.innerHTML = `
+      <div style="padding:4px 0; display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h4 class="mujx-title" style="font-size:14px; margin:0; font-weight:700;">Course Feedback Tracker</h4>
+            <span style="font-size:11px; color:#94a3b8;">${courses.length ? `${completed.length} completed, ${pending.length} pending` : "Open Feedback page to track"}</span>
+          </div>
+          <button type="button" id="mujx_hub_fb_prefs_btn" style="padding:4px 10px; font-size:11px; font-weight:600; border-radius:5px; background:#1e1e2d; border:1px solid #2d2d3f; color:#2dd4bf; cursor:pointer;">
+            ⚙️ Prefs
+          </button>
+        </div>
+
+        ${courses.length === 0 ? `
+          <div class="mujx-empty" style="text-align:center; padding:18px 10px;">
+            <div style="font-size:24px; margin-bottom:6px;">⚡</div>
+            <strong>No Course Feedback Scanned Yet</strong>
+            <p class="mujx-sub" style="font-size:11.5px; color:#94a3b8; margin:6px 0 10px;">
+              Navigate to the university Feedback page to automatically track courses and unlock one-click filling.
+            </p>
+            <a href="/Student/Academic/FeedbackForStudent" class="mujx-btn primary" style="display:inline-block; text-decoration:none; padding:6px 12px; font-size:11.5px; border-radius:6px; background:var(--mujx-accent); color:#fff;">
+              Go to Feedback Page →
+            </a>
+          </div>
+        ` : `
+          <div style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto;">
+            ${courses.map((c) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#121826; padding:8px 10px; border-radius:6px; border:1px solid #2d2d3f;">
+                <div style="min-width:0; flex:1;">
+                  <div style="font-size:12px; font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${c.courseName}">${c.courseName}</div>
+                  <div style="font-size:10.5px; color:#94a3b8;">${c.courseCode} ${c.faculty ? `• ${c.faculty}` : ''}</div>
+                </div>
+                <span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; background:${c.status === 'Completed' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'}; color:${c.status === 'Completed' ? '#34d399' : '#fbbf24'}; margin-left:8px; white-space:nowrap;">
+                  ${c.status}
+                </span>
+              </div>
+            `).join("")}
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed #2d2d3f; padding-top:8px;">
+            <span style="font-size:11px; color:#94a3b8;">One-Click Feedback Assistant active on forms</span>
+            <a href="/Student/Academic/FeedbackForStudent" style="font-size:11.5px; color:var(--mujx-accent); text-decoration:none; font-weight:600;">
+              Open Feedback →
+            </a>
+          </div>
+        `}
+      </div>
+    `;
+
+    container.querySelector("#mujx_hub_fb_prefs_btn")?.addEventListener("click", () => {
+      openFeedbackPreferencesModal();
+    });
   };
 
   const renderSettingsTab = (container, currentPrefs) => {

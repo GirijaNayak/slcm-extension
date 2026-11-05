@@ -2,7 +2,7 @@
 
 [![Manifest V3](https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-blue?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Node Version](https://img.shields.io/badge/Node-%3E%3D20.0.0-green?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/Tests-96%20Passing-success?logo=githubactions&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-103%20Passing-success?logo=githubactions&logoColor=white)]()
 [![Privacy](https://img.shields.io/badge/Security-Zero%20Telemetry-informational?logo=shield&logoColor=white)]()
 
 A high-performance, non-destructive enterprise Chrome extension that enhances the **Manipal University Jaipur (MUJ) SLCM Portal** in place. It injects real-time attendance analytics, credit-weighted provisional grade prediction, target CGPA planning, and schedule tracking directly into the portal without modifying core SLCM backend states or destroying native DOM layouts.
@@ -11,6 +11,7 @@ A high-performance, non-destructive enterprise Chrome extension that enhances th
 
 ## Key Capabilities
 
+- **One-Click Feedback Assistant**: Dynamically detects course questionnaires, auto-populates YES/NO questions, rating dropdowns, and constructive comments in one click using student preferences, with live validation, unanswered question jump navigation, and draft saving.
 - **Attendance Intelligence**: Computes safe skips, classes needed for target attendance (75%), multi-scenario what-if simulations, and theory/lab splits via anchored popovers.
 - **Marks & Provisional SGPA Forecasting**: Predicts provisional course grades and credit-weighted SGPA using live internal marks and configurable End Term Exam (ETE) targets.
 - **Official Institutional Grading Support**: Automatically classifies Theory, Lab, Project-Based Learning (PBL), and Satisfactory/Unsatisfactory (S/U) courses. Correctly excludes non-graded subjects from the GPA divisor.
@@ -36,8 +37,9 @@ A high-performance, non-destructive enterprise Chrome extension that enhances th
                ▼                               ▼
     ┌─────────────────────────────────────────────────────────┐
     │              MUJX Content Script Bundles                │
-    │  • dist/marks.bundle.js   • dist/grades.bundle.js       │
-    │  • dist/content.bundle.js • src/content/timetable.js    │
+    │  • dist/marks.bundle.js    • dist/grades.bundle.js      │
+    │  • dist/feedback.bundle.js • dist/content.bundle.js     │
+    │  • src/content/timetable.js                             │
     ├─────────────────────────────────────────────────────────┤
     │  • In-Place Non-Destructive DOM Hydration               │
     │  • Deterministic Calculation Engines (SGPA / Skips)     │
@@ -57,6 +59,7 @@ A high-performance, non-destructive enterprise Chrome extension that enhances th
 muj-sclm-enhanced/
 ├── dist/                     # Production bundles (esbuild)
 │   ├── content.bundle.js     # Global portal lifecycle bundle
+│   ├── feedback.bundle.js    # One-click feedback assistant bundle
 │   ├── grades.bundle.js      # Grade sheet intelligence bundle
 │   └── marks.bundle.js       # Internal marks & prediction bundle
 ├── docs/                     # Technical specifications & calculation rules
@@ -65,9 +68,10 @@ muj-sclm-enhanced/
 │   ├── calculations/         # Core deterministic math models (SGPA, skips, ETE)
 │   ├── content/              # Content scripts & route bootstrap observers
 │   ├── data/                 # Adapters & DOM parsers for SLCM tables
+│   ├── feedback/             # Feedback detection, parser, matcher, filler, & UI
 │   ├── shared/               # Shared constants, DOM utilities, and themes
 │   └── ui/                   # Modular components, floating hub, and styles
-├── tests/                    # Automated Node test runner suites (96 tests)
+├── tests/                    # Automated Node test runner suites (103 tests)
 ├── manifest.json             # Chromium Manifest V3 extension configuration
 └── package.json              # Build scripts and project dependencies
 ```

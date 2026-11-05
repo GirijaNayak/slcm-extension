@@ -10,7 +10,8 @@
       targetCgpa: true,
       timetable: true,
       notifications: true,
-      homePanel: true
+      homePanel: true,
+      feedbackAssistant: true
     },
     attendanceThreshold: 75,
     borderlineBand: 5,
@@ -26,6 +27,18 @@
       ete: 40
     },
     absoluteGradeBoundaries: []
+  });
+  var DEFAULT_FEEDBACK_PREFERENCES = Object.freeze({
+    defaultYesNo: "YES",
+    // "YES" or "NO"
+    defaultDropdownStrategy: "highest_positive",
+    // "highest_positive" (Strongly Agree / Agree / 5-star) or exact text
+    defaultComment: "The course was well structured and classes were conducted regularly with clear explanations.",
+    fillComments: true,
+    preserveExistingComments: true,
+    preserveExistingAnswers: false,
+    overrides: {}
+    // normalized question text -> answer ("YES", "NO", "Strongly Agree", etc.)
   });
   var MUJ_GRADE_POINTS = Object.freeze({
     "A+": 10,
@@ -55,6 +68,7 @@
     marks: "marks",
     grades: "grades",
     timetable: "timetable",
+    feedback: "feedback",
     other: "other"
   });
   var STORAGE_KEYS = Object.freeze({
@@ -63,7 +77,10 @@
     notifications: "mujx.notifications",
     dismissed: "mujx.dismissed",
     timetableSnapshot: "mujx.timetableSnapshot",
-    hubState: "mujx.hubState"
+    hubState: "mujx.hubState",
+    feedbackPreferences: "mujx.feedbackPreferences",
+    feedbackDrafts: "mujx.feedbackDrafts",
+    feedbackTracker: "mujx.feedbackTracker"
   });
 
   // src/shared/dom.js

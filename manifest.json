@@ -91,6 +91,19 @@
       ],
       "js": ["src/content/dashboard.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://mujslcm.jaipur.manipal.edu/*Feedback*",
+        "*://muj.slcm.jaipur.manipal.edu/*Feedback*",
+        "*://mujslcm.jaipur.manipal.edu/*feedback*",
+        "*://muj.slcm.jaipur.manipal.edu/*feedback*",
+        "*://mujslcm.jaipur.manipal.edu/Student/Academic/Feedback*",
+        "*://muj.slcm.jaipur.manipal.edu/Student/Academic/Feedback*"
+      ],
+      "js": ["dist/feedback.bundle.js"],
+      "css": ["src/ui/styles.css"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

@@ -18,6 +18,7 @@ export const DEFAULT_PREFERENCES = Object.freeze({
     timetable: true,
     notifications: true,
     homePanel: true,
+    feedbackAssistant: true,
   },
   attendanceThreshold: 75,
   borderlineBand: 5,
@@ -33,6 +34,16 @@ export const DEFAULT_PREFERENCES = Object.freeze({
     ete: 40,
   },
   absoluteGradeBoundaries: [],
+});
+
+export const DEFAULT_FEEDBACK_PREFERENCES = Object.freeze({
+  defaultYesNo: "YES", // "YES" or "NO"
+  defaultDropdownStrategy: "highest_positive", // "highest_positive" (Strongly Agree / Agree / 5-star) or exact text
+  defaultComment: "The course was well structured and classes were conducted regularly with clear explanations.",
+  fillComments: true,
+  preserveExistingComments: true,
+  preserveExistingAnswers: false,
+  overrides: {}, // normalized question text -> answer ("YES", "NO", "Strongly Agree", etc.)
 });
 
 export const MUJ_GRADE_POINTS = Object.freeze({
@@ -66,6 +77,7 @@ export const PAGE_KINDS = Object.freeze({
   marks: "marks",
   grades: "grades",
   timetable: "timetable",
+  feedback: "feedback",
   other: "other",
 });
 
@@ -76,4 +88,7 @@ export const STORAGE_KEYS = Object.freeze({
   dismissed: "mujx.dismissed",
   timetableSnapshot: "mujx.timetableSnapshot",
   hubState: "mujx.hubState",
+  feedbackPreferences: "mujx.feedbackPreferences",
+  feedbackDrafts: "mujx.feedbackDrafts",
+  feedbackTracker: "mujx.feedbackTracker",
 });

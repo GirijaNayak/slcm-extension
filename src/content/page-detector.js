@@ -10,12 +10,13 @@ export function isLoginPage(doc = document, href = location.href) {
     path = String(href || "").toLowerCase();
   }
 
-  // 1. If on any authenticated student route or dashboard, it is DEFINITELY NOT a login page!
+  // 1. If on any authenticated student route, feedback route, or dashboard, it is DEFINITELY NOT a login page!
   if (
     path.startsWith("/student") ||
     path.includes("/home/dashboard") ||
     path.includes("/academic") ||
-    path.includes("/examination")
+    path.includes("/examination") ||
+    path.includes("/feedback")
   ) {
     return false;
   }
@@ -76,6 +77,9 @@ export function detectPage(doc = document, href = location.href) {
   const heading = collectHeadings(doc);
   const body = `${title} ${heading} ${path}`;
 
+  if (matches(body, ["feedback", "questionnaire", "survey", "evaluation"]) || /feedback|questionnaire/.test(path)) {
+    return { kind: PAGE_KINDS.feedback, reason: "path-or-heading" };
+  }
   if (matches(body, ["attendance", "attendence"]) || /attendance/.test(path)) {
     return { kind: PAGE_KINDS.attendance, reason: "path-or-heading" };
   }
